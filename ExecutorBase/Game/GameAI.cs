@@ -158,7 +158,7 @@ namespace WindBot.Game
         /// </summary>
         /// <param name="player">Player who announce.</param>
         /// <param name="data">Annouced info.</param>
-        public void OnReceivingAnnouce(int player, int data)
+        public void OnReceivingAnnouce(int player, long data)
         {
             Executor.OnReceivingAnnouce(player, data);
         }
