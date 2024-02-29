@@ -655,7 +655,7 @@ namespace WindBot.Game.AI.Decks
             return 1;
         }
 
-        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, int hint, bool cancelable)
+        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
             ClientCard currentSolvingChain = Duel.GetCurrentSolvingChainCard();
             if (currentSolvingChain != null)
@@ -1369,7 +1369,7 @@ namespace WindBot.Game.AI.Decks
             return base.OnSelectPosition(cardId, positions);
         }
 
-        public override int OnSelectOption(IList<int> options)
+        public override int OnSelectOption(IList<long> options)
         {
             // override for cooclock
             if (options.Count() == 2 && options.Contains(1190) && options.Contains(1152))
@@ -3608,10 +3608,10 @@ namespace WindBot.Game.AI.Decks
             if (CheckWhetherNegated()) return false;
             List<ClientCard> targetList = GetNormalEnemyTargetList(true, true, CardType.Monster);
             if (targetList.Count() == 0) return false;
-            int logDesc = ActivateDescription;
+            long logDesc = ActivateDescription;
             if (logDesc >= Util.GetStringId(CardId.UnchainedAbomination, 0))
             {
-                logDesc = Util.GetStringId(CardId.UnchainedAbomination, 0) - 10;
+                logDesc = (int)(Util.GetStringId(CardId.UnchainedAbomination, 0) - 10);
             }
             Logger.DebugWriteLine("[UnchainedAbomination]desc: " + logDesc + ", timing = " + CurrentTiming);
             if (ActivateDescription == Util.GetStringId(CardId.UnchainedAbomination, 0)) activatedCardIdList.Add(Card.Id);

@@ -58,7 +58,7 @@ namespace WindBot.Game.AI
         Counter = 572,
         Disable = 573,
         OperateCard = 574,
-        Negate = 575;
+        Negate = 575,
         RITUAL = 1057,
         FUSION = 1056,
         SYNCHRO = 1063,

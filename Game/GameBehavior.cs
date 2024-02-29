@@ -746,7 +746,7 @@ namespace WindBot.Game
                 }
             }
         
-            _ai.OnMove(card, previousControler, previousLocation, currentControler, currentLocation);
+            _ai.OnMove(card, previous.controler, previous.location, current.controler, current.location);
         }
 
         private void OnSwap(BinaryReader packet)
@@ -825,6 +825,7 @@ namespace WindBot.Game
             if (card.Id == 0)
                 card.SetId(cardId);
             int cc = GetLocalPlayer(packet.ReadByte());
+            int pcl = packet.ReadByte();
             if (_debug)
                 if (card != null) Logger.WriteLine("(" + cc.ToString() + " 's " + (card.Name ?? "UnKnowCard") + " activate effect from " + (CardLocation)pcl + ")");
             _duel.LastChainLocation = (CardLocation)pcl;

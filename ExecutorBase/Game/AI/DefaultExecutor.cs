@@ -124,7 +124,7 @@ namespace WindBot.Game.AI
             public const int LightningStorm = 14532163;
 
             public const int BelialMarquisOfDarkness = 33655493;
-            public const int ChirubimÈPrincessOfAutumnLeaves = 87294988;
+            public const int Chirubim√©PrincessOfAutumnLeaves = 87294988;
             public const int PerformapalBarokuriboh = 19050066;
             public const int LabrynthArchfiend = 48745395;
             public const int HarpiesPetDragonFearsomeFireBlast = 4991081;
@@ -189,6 +189,28 @@ namespace WindBot.Game.AI
             public const int SilenforcingBarrier = 98477480;
         }
 
+        protected class _Setcode
+        {
+            public const int Watt = 0xe;
+            public const int Speedroid = 0x2016;
+            public const int EarthboundImmortal = 0x1021;
+            public const int Naturia = 0x2a;
+            public const int Nordic = 0x42;
+            public const int Harpie = 0x64;
+            public const int Madolche = 0x71;
+            public const int Ghostrick = 0x8d;
+            public const int OddEyes = 0x99;
+            public const int Performapal = 0x9f;
+            public const int BlueEyes = 0xdd;
+            public const int FurHire = 0x114;
+            public const int Altergeist = 0x103;
+            public const int Crusadia = 0x116;
+            public const int Endymion = 0x12a;
+            public const int AncientWarriors = 0x137;
+            public const int RescueACE = 0x18b;
+            public const int VanquishSoul = 0x195;
+        }
+
         protected DefaultExecutor(GameAI ai, Duel duel)
             : base(ai, duel)
         {
@@ -204,7 +226,7 @@ namespace WindBot.Game.AI
         /// </summary>
         protected Dictionary<int, Func<ClientCard, bool>> DefenderProtectRule = new Dictionary<int, Func<ClientCard, bool>> {
             {_CardId.BelialMarquisOfDarkness, defender => defender.IsFaceup()},
-            {_CardId.ChirubimÈPrincessOfAutumnLeaves, defender => defender.HasRace(CardRace.Plant)},
+            {_CardId.Chirubim√©PrincessOfAutumnLeaves, defender => defender.HasRace(CardRace.Plant)},
             {_CardId.PerformapalBarokuriboh, defender => true},
             {_CardId.LabrynthArchfiend, defender => defender.HasRace(CardRace.Fiend) && !defender.IsCode(_CardId.LabrynthArchfiend)},
             {_CardId.HarpiesPetDragonFearsomeFireBlast, defender => defender.Level <= 6 && defender.HasSetcode(_Setcode.Harpie)},
@@ -957,6 +979,11 @@ namespace WindBot.Game.AI
                 _CardId.HarpiesFeatherDuster,
                 _CardId.DarkMagicAttack
             };
+            int[] destroyAllOpponentSpellList =
+            {
+                _CardId.HarpiesFeatherDuster,
+                _CardId.DarkMagicAttack
+            };
 
             if (Util.ChainContainsCard(destroyAllList)) return true;
             if (Enemy.HasInSpellZone(destroyAllOpponentSpellList, true) && Card.Location == CardLocation.SpellZone) return true;
@@ -1392,11 +1419,11 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        public override void OnReceivingAnnouce(int player, int data)
+        public override void OnReceivingAnnouce(int player, long data)
         {
             if (player == 1 && data == Util.GetStringId(_CardId.LightningStorm, 0) || data == Util.GetStringId(_CardId.LightningStorm, 1))
             {
-                lightningStormOption = data - Util.GetStringId(_CardId.LightningStorm, 0);
+                lightningStormOption = (int)(data - Util.GetStringId(_CardId.LightningStorm, 0));
             }
 
             base.OnReceivingAnnouce(player, data);

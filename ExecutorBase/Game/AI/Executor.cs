@@ -22,6 +22,7 @@ namespace WindBot.Game.AI
         protected ExecutorType Type { get; private set; }
         protected ClientCard Card { get; private set; }
         protected long ActivateDescription { get; private set; }
+        protected int CurrentTiming { get; private set; }
 
         protected ClientField Bot { get; private set; }
         protected ClientField Enemy { get; private set; }
@@ -97,12 +98,17 @@ namespace WindBot.Game.AI
             // For overriding
         }
 
+        public virtual void OnChainSolved(int chainIndex)
+        {
+            // For overriding
+        }
+
         public virtual void OnChainEnd()
         {
             // For overriding
         }
 
-        public virtual void OnReceivingAnnouce(int player, int data)
+        public virtual void OnReceivingAnnouce(int player, long data)
         {
             // For overriding
         }
@@ -126,7 +132,7 @@ namespace WindBot.Game.AI
             // Some AI need do something on card's moving
         }
 
-        public virtual IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, int hint, bool cancelable)
+        public virtual IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
             // For overriding
             return null;
@@ -184,6 +190,23 @@ namespace WindBot.Game.AI
         {
             return;
         }
+
+        public virtual bool OnSelectYesNo(int desc)
+        {
+            return true;
+        }
+
+        public virtual int OnSelectOption(IList<int> options)
+        {
+            return -1;
+        }
+
+        public virtual int OnSelectPlace(int cardId, int player, CardLocation location, int available)
+        {
+            // For overriding
+            return 0;
+        }
+
 
         public virtual bool OnSelectYesNo(long desc)
         {
@@ -247,11 +270,12 @@ namespace WindBot.Game.AI
         /// <summary>
         /// Set global variables Type, Card, ActivateDescription for Executor
         /// </summary>
-        public void SetCard(ExecutorType type, ClientCard card, long description)
+        public void SetCard(ExecutorType type, ClientCard card, long description, int timing = -1)
         {
             Type = type;
             Card = card;
             ActivateDescription = description;
+            CurrentTiming = timing;
         }
 
         /// <summary>
