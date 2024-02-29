@@ -971,7 +971,8 @@ namespace WindBot.Game.AI
                 _CardId.BlackRoseDragon,
                 _CardId.JudgmentDragon,
                 _CardId.TopologicTrisbaena,
-                _CardId.EvenlyMatched
+                _CardId.EvenlyMatched,
+                _CardId.DivineArsenalAAZEUS_SkyThunder
             };
             int[] destroyAllOpponentList =
             {
