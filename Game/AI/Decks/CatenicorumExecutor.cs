@@ -113,6 +113,12 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.Chains, AvoidImpermanenceActivate(() => true));
         AddExecutor(ExecutorType.Activate, CardId.Sanctum);
 
+        // Other effects, to always activate
+        AddExecutor(ExecutorType.Activate, CardId.GaiaBlazeForceOfTheSun);
+        AddExecutor(ExecutorType.Activate, CardId.CyberseQuantumDragon);
+        AddExecutor(ExecutorType.Activate, CardId.HopeHarbingerDragonTitanicGalaxy);
+        AddExecutor(ExecutorType.Activate, CardId.SuperStarslayerTYPHON);
+
         // Generic Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.AussaEarthCharmerImmovable, CharmerSpecial(CardId.AussaEarthCharmerImmovable, CardAttribute.Earth));
         AddExecutor(ExecutorType.SpSummon, CardId.EriaWaterCharmerGentle, CharmerSpecial(CardId.EriaWaterCharmerGentle, CardAttribute.Water));
