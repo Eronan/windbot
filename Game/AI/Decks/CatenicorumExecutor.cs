@@ -119,10 +119,23 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.HopeHarbingerDragonTitanicGalaxy);
         AddExecutor(ExecutorType.Activate, CardId.SuperStarslayerTYPHON);
 
+        // Catenicorum Special Summons
+        AddExecutor(ExecutorType.SpSummon, CardId.Manipulator);
+        AddExecutor(ExecutorType.SpSummon, CardId.Serpent);
+        AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast);
+
         // Generic Special Summons
+        AddExecutor(ExecutorType.SpSummon, CardId.GaiaBlazeForceOfTheSun);
+        AddExecutor(ExecutorType.SpSummon, CardId.CyberseQuantumDragon);
+        AddExecutor(ExecutorType.SpSummon, CardId.ClearWingSynchroDragon);
+        AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon);
+        AddExecutor(ExecutorType.SpSummon, CardId.UtopiaBeyond);
+        AddExecutor(ExecutorType.SpSummon, CardId.HopeHarbingerDragonTitanicGalaxy);
         AddExecutor(ExecutorType.SpSummon, CardId.AussaEarthCharmerImmovable, CharmerSpecial(CardId.AussaEarthCharmerImmovable, CardAttribute.Earth));
         AddExecutor(ExecutorType.SpSummon, CardId.EriaWaterCharmerGentle, CharmerSpecial(CardId.EriaWaterCharmerGentle, CardAttribute.Water));
+        AddExecutor(ExecutorType.SpSummon, CardId.HiitaFireCharmerAblaze, CharmerSpecial(CardId.HiitaFireCharmerAblaze, CardAttribute.Fire));
         AddExecutor(ExecutorType.SpSummon, CardId.DecodeTalker, GenericLinkSummon);
+        AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, () => Duel.Phase is DuelPhase.Main2);
     }
 
     public override void OnNewTurn()
