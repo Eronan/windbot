@@ -1,12 +1,7 @@
-using YGOSharp.OCGWrapper;
 using YGOSharp.OCGWrapper.Enums;
 using System.Collections.Generic;
 using System.Linq;
 using System;
-using WindBot;
-using WindBot.Game;
-using WindBot.Game.AI;
-using System.IO;
 
 namespace WindBot.Game.AI.Decks
 {
