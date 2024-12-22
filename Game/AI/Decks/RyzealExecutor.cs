@@ -6,6 +6,7 @@ using System;
 using WindBot;
 using WindBot.Game;
 using WindBot.Game.AI;
+using System.IO;
 
 namespace WindBot.Game.AI.Decks
 {
@@ -899,7 +900,7 @@ namespace WindBot.Game.AI.Decks
             base.OnSelectChain(cards);
         }
 
-        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, int hint, bool cancelable)
+        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
             ClientCard currentSolvingChain = Duel.GetCurrentSolvingChainCard();
             if (currentSolvingChain != null)
@@ -1453,7 +1454,7 @@ namespace WindBot.Game.AI.Decks
             return !maybeTenpai;
         }
 
-        public override int OnSelectOption(IList<int> options)
+        public override int OnSelectOption(IList<long> options)
         {
             bool tripleCheck = false;
             for (int opt = 0; opt < 3; ++ opt)
@@ -2330,7 +2331,7 @@ namespace WindBot.Game.AI.Decks
             return true;
         }
 
-        public int TripleTacticsTalentDecision(IList<int> options)
+        public int TripleTacticsTalentDecision(IList<long> options)
         {
             // gain control?
             bool dangerFlag = Enemy.GetMonsters().Any(c => c.IsFaceup() && !c.IsDisabled() && (c.IsFloodgate()
