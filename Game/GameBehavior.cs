@@ -422,9 +422,6 @@ namespace WindBot.Game
             _duel.LastChainTargets.Clear();
             _duel.LastSummonedCards.Clear();
             _duel.LastSummonPlayer = -1;
-            int duel_rule = packet.ReadByte();
-            _ai.Duel.IsNewRule = (duel_rule >= 4);
-            _ai.Duel.IsNewRule2020 = (duel_rule >= 5);
             _duel.Fields[GetLocalPlayer(0)].LifePoints = packet.ReadInt32();
             _duel.Fields[GetLocalPlayer(1)].LifePoints = packet.ReadInt32();
             int deck = packet.ReadInt16();

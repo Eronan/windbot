@@ -6,6 +6,12 @@
         "masterRules": [ 5 ]
     },
     {
+        "name": "Albaz",
+        "deck": "Albaz",
+        "difficulty": 4,
+        "masterRules": [ 5 ]
+    },
+    {
         "name": "Altergeist",
         "deck": "Altergeist",
         "difficulty": 3,

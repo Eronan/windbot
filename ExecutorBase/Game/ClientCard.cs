@@ -410,6 +410,17 @@ namespace WindBot.Game
             return IsAttack() ? Attack : Defense;
         }
 
+        public int GetOriginCode()
+        {
+            int code = Id;
+            if (Data != null)
+            {
+                if (Data.Alias > 0) code = Data.Alias;
+                else code = Data.Id;
+            }
+            return code;
+        }
+
         public bool Equals(ClientCard card)
         {
             return ReferenceEquals(this, card);
