@@ -105,6 +105,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.AussaEarthCharmerImmovable);
         AddExecutor(ExecutorType.Activate, CardId.EriaWaterCharmerGentle);
         AddExecutor(ExecutorType.Activate, CardId.BorrelswordDragon, BorrelswordEffect);
+        AddExecutor(ExecutorType.Activate, CardId.Summoner, CatenicorumSummonerEffect);
+        AddExecutor(ExecutorType.Activate, CardId.Shadow);
+        AddExecutor(ExecutorType.Activate, CardId.Circle, CatenicorumCircleEffect);
+        AddExecutor(ExecutorType.Activate, CardId.Binding, CatenicorumBindingEffect);
+        AddExecutor(ExecutorType.Activate, CardId.Portal, AvoidImpermanenceActivate(() => true));
+        AddExecutor(ExecutorType.Activate, CardId.Chains, AvoidImpermanenceActivate(() => true));
+        AddExecutor(ExecutorType.Activate, CardId.Sanctum);
 
         // Generic Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.AussaEarthCharmerImmovable, CharmerSpecial(CardId.AussaEarthCharmerImmovable, CardAttribute.Earth));
@@ -169,6 +176,46 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             }
         }
         return false;
+    }
+
+    private bool CatenicorumBindingEffect()
+    {
+        if (Card.Location is not CardLocation.SpellZone)
+        {
+            // If it's been used as material, always activate it whenever available in a zone not imperm'd.
+            SelectSTPlace(Card);
+            return true;
+        }
+
+        var negateTargets = Duel.CurrentChain.Where(card => card.Controller == 1 && card.Location is CardLocation.Onfield).ToList();
+        var monsterTargets = Enemy.MonsterZone.Where(card => !negateTargets.Contains(card));
+        var spellTrapTargets = Enemy.SpellZone.Where(card => !negateTargets.Contains(card));
+
+        negateTargets.AddRange(monsterTargets);
+        negateTargets.AddRange(spellTrapTargets);
+
+        // Choose target to negate
+        if (negateTargets.Count == 0)
+        {
+            return false;
+        }
+
+        AI.SelectCard(negateTargets);
+        return true;
+    }
+
+    private bool CatenicorumCircleEffect()
+    {
+        if (Card.Location is not CardLocation.SpellZone)
+        {
+            // If it's been used as material, always activate it whenever available in a zone not imperm'd.
+            SelectSTPlace(Card);
+            return true;
+        }
+
+        // To improve after creating summon proc functions.
+        var shouldSummonCard = Bot.Hand.Any(card => CatenicorumRunes.Contains(card.GetOriginCode()) && !Bot.HasInMonstersZone(card.GetOriginCode()));
+        return shouldSummonCard;
     }
 
     private bool CatenicorumManipulatorEffect()
@@ -240,6 +287,33 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         SerpentNegated.Add(chosenTarget.GetOriginCode());
         AI.SelectCard(chosenTarget);
         return true;
+    }
+
+    private bool CatenicorumSummonerEffect()
+    {
+        // To add to hand
+        List<int> cardsId = [];
+        AddToSummonerList(CardId.Manipulator);
+        AddToSummonerList(CardId.Serpent);
+        AddToSummonerList(CardId.EtherealBeast);
+        AddToSummonerList(CardId.Portal, Bot.HasInHandOrInSpellZone);
+        AddToSummonerList(CardId.Sanctum, Bot.HasInHandOrInSpellZone);
+        AddToSummonerList(CardId.Circle, cardId => Bot.IsFieldEmpty());
+        AddToSummonerList(CardId.Shadow, Bot.HasInHandOrHasInMonstersZone);
+        cardsId.Add(CardId.Summoner);
+        AddToSummonerList(CardId.Chains, cardId => Enemy.MonsterZone.Any(card => card.IsFaceup()));
+        AI.SelectNextCard(cardsId);
+        return true;
+
+        void AddToSummonerList(int cardId, Func<int, bool> condition = null)
+        {
+            condition ??= Bot.HasInHand;
+
+            if (condition(cardId))
+            {
+                cardsId.Add(cardId);
+            }
+        }
     }
 
     private Func<bool> CharmerSpecial(int cardId, CardAttribute cardAttribute)
