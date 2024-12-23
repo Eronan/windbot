@@ -1302,13 +1302,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return 0;
     }
 
-    private bool SuperStarslayerTYPHONActivate()
+    private IList<ClientCard> SuperStarslayerTYPHONTarget()
     {
-        if (Card.IsDisabled())
-        {
-            return false;
-        }
-
         List<ClientCard> targetList =
         [
             .. Enemy.GetMonsters()
@@ -1332,23 +1327,37 @@ public sealed class CatenicorumExecutor : DefaultExecutor
                 .OrderByDescending(card => card.Attack));
         }
 
-        // Best case scenario targeting.
-        if (targetList.Count() > 0)
-        {
-            targetList.AddRange(Enemy.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderByDescending(card => card.Attack));
-            targetList.AddRange(Bot.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderBy(card => card.Attack));
-            AI.SelectCard(Card.Overlays);
-            Logger.DebugWriteLine("TYPHON first target: " + targetList[0]?.Name ?? "UNKNOWN");
-            AI.SelectNextCard(targetList);
-            return true;
-        }
-
-        // Just use the effect, because we plan to remove it from the field by summoning over it next turn.
         var monsterTarget = Util.GetProblematicEnemyMonster(0, false);
         if (monsterTarget is not null)
         {
+            targetList.Add(monsterTarget):
+        }
+
+        if (targetList.Count > 0)
+        {
+            targetList.AddRange(Enemy.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderByDescending(card => card.Attack));
+            targetList.AddRange(Bot.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderBy(card => card.Attack));
+            return targetList;
+        }
+
+        return targetList;
+    }
+
+    private bool SuperStarslayerTYPHONActivate()
+    {
+        if (Card.IsDisabled())
+        {
+            return false;
+        }
+
+        var targetList = SuperStarslayerTYPHONTarget();
+
+        // Best case scenario targeting.
+        if (targetList.Count > 0)
+        {
             AI.SelectCard(Card.Overlays);
-            AI.SelectNextCard(monsterTarget);
+            Logger.DebugWriteLine("TYPHON first target: " + targetList[0]?.Name ?? "UNKNOWN");
+            AI.SelectNextCard(targetList);
             return true;
         }
 
