@@ -1376,7 +1376,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        bool checkFlag = ;
+        bool checkFlag = problematicCards.Count > 0;
         checkFlag |= material.Level <= 4;
         checkFlag &= !(material.HasType(CardType.Link) && Duel.Phase >= DuelPhase.Main2);
         if (checkFlag)
