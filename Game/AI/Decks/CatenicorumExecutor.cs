@@ -175,8 +175,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, SuperStarslayerTYPHONSpSummon);
 
         // Mulcharmy Normal Summons, if we can normal summon them. We can't activate their effects anyways so use them as material.
-        AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
         AddExecutor(ExecutorType.Summon, CardId.MulcharmyPurulia);
+        AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
     }
 
     public override void OnNewTurn()
@@ -202,6 +202,12 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         base.OnNewTurn();
+    }
+
+    public override int OnSelectPlace(int cardId, int player, CardLocation location, int available)
+    {
+        Logger.WriteLine($"Hand Size: {Bot.Hand.Count}");
+        return base.OnSelectPlace(cardId, player, location, available);
     }
 
     public Func<bool> AvoidImpermanenceActivate(Func<bool> func)
@@ -267,8 +273,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         var negateTargets = Duel.CurrentChain.Where(card => card.Controller == 1 && card.Location is CardLocation.Onfield).ToList();
-        var monsterTargets = Enemy.MonsterZone.Where(card => !negateTargets.Contains(card));
-        var spellTrapTargets = Enemy.SpellZone.Where(card => !negateTargets.Contains(card));
+        var monsterTargets = Enemy.MonsterZone.Where(card => card != null && !negateTargets.Contains(card));
+        var spellTrapTargets = Enemy.SpellZone.Where(card => card != null && !negateTargets.Contains(card));
 
         negateTargets.AddRange(monsterTargets);
         negateTargets.AddRange(spellTrapTargets);
@@ -317,11 +323,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         bool SelectMaterials(ClientCard summonCard)
         {
             // Get all non-Token monsters
-            var nonTokenFilter = (ClientCard card) => (card.Type & (int)CardType.Token) == 0;
+            var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
             var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode())).ToList();
 
             // Get all Catenicorum Spell/Traps
-            var catenicorumSpellFilter = (ClientCard card) => card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
             var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter).ToList();
 
             // Prioritise selecting the opponent's cards as materials, selecting all available ones.
@@ -534,9 +540,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         bool SelectMaterials(ClientCard summonCard)
         {
-            var availableMonsterMaterial = Bot.SpellZone.Where(card => AvoidAllMaterials.Contains(card.GetOriginCode()));
+            var availableMonsterMaterial = Bot.MonsterZone.Where(card => card != null && AvoidAllMaterials.Contains(card.GetOriginCode()));
 
-            var catenicorumSpellFilter = (ClientCard card) => card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
             var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
 
             ClientCard monsterMaterial = null;
@@ -686,11 +692,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         bool SelectMaterials(ClientCard summonCard)
         {
             // Get all non-Token monsters
-            var nonTokenFilter = (ClientCard card) => (card.Type & (int)CardType.Token) == 0;
+            var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
             var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode()));
 
             // Get all Catenicorum Spell/Traps
-            var catenicorumSpellFilter = (ClientCard card) => card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
             var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
 
             ClientCard monsterMaterial = null;
@@ -855,9 +861,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool CrystalWingRampSummon()
     {
-        var tunerMaterials = Bot.MonsterZone.Where(card => card.Level == 1 && card.IsTuner()).ToList();
-        var otherLevel6Material = Bot.MonsterZone.Where(card => card.Level == 6 && !card.IsOriginalCode(CardId.Manipulator));
-        var manipulatorMaterial = Bot.MonsterZone.Where(card => card.IsOriginalCode(CardId.Manipulator));
+        var tunerMaterials = Bot.MonsterZone.Where(card => card != null && card.Level == 1 && card.IsTuner()).ToList();
+        var otherLevel6Material = Bot.MonsterZone.Where(card => card != null && card.Level == 6 && !card.IsOriginalCode(CardId.Manipulator));
+        var manipulatorMaterial = Bot.MonsterZone.Where(card => card != null && card.IsOriginalCode(CardId.Manipulator));
 
         // If there's another monster besides Catenicorum Manipulator to use as material, summon this Synchro monster using that card.
         if (otherLevel6Material.Any() || manipulatorMaterial.Count() > 1)
