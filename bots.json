@@ -6,6 +6,12 @@
         "masterRules": [ 5 ]
     },
     {
+        "name": "Adventurer",
+        "deck": "Brave",
+        "difficulty": 3,
+        "masterRules": [ 4, 5 ]
+    },
+    {
         "name": "Albaz",
         "deck": "Albaz",
         "difficulty": 4,
@@ -30,16 +36,16 @@
         "masterRules": [ 3, 4, 5 ]
     },
     {
-        "name": "Adventurer",
-        "deck": "Brave",
-        "difficulty": 3,
-        "masterRules": [ 4, 5 ]
-    },
-    {
         "name": "Burn",
         "deck": "Burn",
         "difficulty": 0,
         "masterRules": [ 3, 4, 5 ]
+    },
+    {
+        "name": "Catenicorum",
+        "deck": "Catenicorum",
+        "difficulty": 2,
+        "masterRules": [ 4, 5 ]
     },
     {
         "name": "Chain Burn",
