@@ -78,7 +78,15 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private readonly List<int> UsedSpellTrapMaterial = [];
 
-    private bool portalIsUsed = false;
+    private bool portalRuneFromDeckIsUsed = false;
+
+    private bool portalExtraMaterialUsed = false;
+
+    private bool sanctumExtraMaterialUsed = false;
+
+    private bool shadowExtraMaterialUsed = false;
+
+    private bool summonerExtraMaterialUsed = false;
 
     public CatenicorumExecutor(GameAI ai, Duel duel)
         : base(ai, duel)
@@ -127,7 +135,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         // Priority Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
-        AddExecutor(ExecutorType.SpSummon, CardId.Manipulator);
+        AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, CatenicorumManipulatorRuneSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.Serpent);
         AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast);
 
@@ -158,7 +166,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         ImpermanenceZonesThisTurn.Clear();
         SerpentNegated.Clear();
         UsedSpellTrapMaterial.Clear();
-        portalIsUsed = false;
+
+        // Effect count limits.
+        portalRuneFromDeckIsUsed = false;
+        portalExtraMaterialUsed = false;
+        sanctumExtraMaterialUsed = false;
+        shadowExtraMaterialUsed = false;
+        summonerExtraMaterialUsed = false;
         base.OnNewTurn();
     }
 
@@ -286,6 +300,19 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         selectOrder.AddRange(avoidSelect);
         AI.SelectCard(selectOrder);
+
+        return true;
+    }
+
+    private bool CatenicorumManipulatorRuneSummon()
+    {
+        // Don't summon this if it's in the deck, and already exists in the hand.
+        if (Card.Location is CardLocation.Deck && Bot.HasInHand(CardId.Manipulator))
+        {
+            return false;
+        }
+
+        var monsterMaterials = GetCatenicorumMonsterMaterials();
 
         return true;
     }
@@ -438,6 +465,52 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return true;
     }
 
+    private IList<(ClientCard, int?)> GetCatenicorumMonsterMaterials(bool includeExtra = false)
+    {
+        var extraMaterial = new List<(ClientCard, int)>();
+        if (!sanctumExtraMaterialUsed && Bot.GetFieldSpellCard().IsOriginalCode(CardId.Sanctum))
+        {
+            var usableMaterials = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
+            var preferredMaterial = usableMaterials.FirstOrDefault(card => ShouldUseShadowFromDeck(card) || ShouldUseSummonerFromDeck(card));
+            if (preferredMaterial is null)
+            {
+                extraMaterial.Add((preferredMaterial, CardId.Sanctum));
+            }
+
+            if (usableMaterials.Any())
+            {
+                extraMaterial.Add((usableMaterials.First(), CardId.Sanctum));
+            }
+        }
+
+        if (extraMaterial.Count == 0 && !portalExtraMaterialUsed && Bot.HasInSpellZone(CardId.Portal))
+        {
+            var usableMaterials = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
+            var preferredMaterial = usableMaterials.FirstOrDefault(card => ShouldUseShadowFromDeck(card) || ShouldUseSummonerFromDeck(card));
+            if (preferredMaterial is null)
+            {
+                extraMaterial.Add((preferredMaterial, CardId.Portal));
+            }
+
+            if (usableMaterials.Any())
+            {
+                extraMaterial.Add((usableMaterials.First(), CardId.Portal));
+            }
+        }
+
+        return [..extraMaterial, ..Bot.MonsterZone.Select<ClientCard, (ClientCard, int?)>(card => (card, null))];
+
+        bool ShouldUseShadowFromDeck(ClientCard clientCard)
+        {
+            return clientCard.IsOriginalCode(CardId.Shadow) && !shadowExtraMaterialUsed && Bot.HasInHand(CardId.Shadow);
+        }
+
+        bool ShouldUseSummonerFromDeck(ClientCard clientCard)
+        {
+            return clientCard.IsOriginalCode(CardId.Summoner) && !summonerExtraMaterialUsed && Bot.HasInHand(CardId.Summoner);
+        }
+    }
+
     public bool InfiniteImpermanenceActivate()
     {
         var usedInfiniteImpermanence = DefaultInfiniteImpermanence();
@@ -541,7 +614,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     private bool RuneIsSummonable(ClientCard extraMaterial = null)
     {
         var handCards = Bot.Hand.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
-        var deckCards = portalIsUsed ? [] : Bot.Deck.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
+        var deckCards = portalRuneFromDeckIsUsed ? [] : Bot.Deck.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
         return handCards.Any() || deckCards.Any();
 
         bool CardIsSummonable(int cardId)
