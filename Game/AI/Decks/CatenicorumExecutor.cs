@@ -3,6 +3,7 @@ namespace WindBot.Game.AI.Decks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using WindBot.Game;
 using YGOSharp.OCGWrapper;
@@ -67,12 +68,17 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private readonly List<int> AvoidGenericMaterials = [
         CardId.Serpent,
-        CardId.CrystalWingSynchroDragon
+        CardId.ClearWingSynchroDragon,
+        CardId.CyberseQuantumDragon,
     ];
 
     private readonly List<int> ImpermanenceZonesThisTurn = [];
 
     private readonly List<int> SerpentNegated = [];
+
+    private readonly List<int> UsedSpellTrapMaterial = [];
+
+    private bool portalIsUsed = false;
 
     public CatenicorumExecutor(GameAI ai, Duel duel)
         : base(ai, duel)
@@ -119,28 +125,40 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.HopeHarbingerDragonTitanicGalaxy);
         AddExecutor(ExecutorType.Activate, CardId.SuperStarslayerTYPHON);
 
-        // Catenicorum Special Summons
+        // Priority Special Summons
+        AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
         AddExecutor(ExecutorType.SpSummon, CardId.Manipulator);
         AddExecutor(ExecutorType.SpSummon, CardId.Serpent);
         AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast);
 
         // Generic Special Summons
-        AddExecutor(ExecutorType.SpSummon, CardId.GaiaBlazeForceOfTheSun);
-        AddExecutor(ExecutorType.SpSummon, CardId.CyberseQuantumDragon);
-        AddExecutor(ExecutorType.SpSummon, CardId.ClearWingSynchroDragon);
-        AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon);
+        AddExecutor(ExecutorType.SpSummon, CardId.CyberseQuantumDragon, CrystalWingRampSummon);
+        AddExecutor(ExecutorType.SpSummon, CardId.ClearWingSynchroDragon, CrystalWingRampSummon);
+        AddExecutor(ExecutorType.SpSummon, CardId.GaiaBlazeForceOfTheSun, CrystalWingRampSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.UtopiaBeyond);
         AddExecutor(ExecutorType.SpSummon, CardId.HopeHarbingerDragonTitanicGalaxy);
+        AddExecutor(ExecutorType.SpSummon, CardId.BorrelswordDragon, GenericLinkSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.AussaEarthCharmerImmovable, CharmerSpecial(CardId.AussaEarthCharmerImmovable, CardAttribute.Earth));
         AddExecutor(ExecutorType.SpSummon, CardId.EriaWaterCharmerGentle, CharmerSpecial(CardId.EriaWaterCharmerGentle, CardAttribute.Water));
         AddExecutor(ExecutorType.SpSummon, CardId.HiitaFireCharmerAblaze, CharmerSpecial(CardId.HiitaFireCharmerAblaze, CardAttribute.Fire));
         AddExecutor(ExecutorType.SpSummon, CardId.DecodeTalker, GenericLinkSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, () => Duel.Phase is DuelPhase.Main2);
+
+        // Catenicorum Normal Summons
+        AddExecutor(ExecutorType.Summon, CardId.Summoner);
+        AddExecutor(ExecutorType.Summon, CardId.Shadow);
+
+        // Mulcharmy Normal Summons, if we can normal summon them. We can't activate their effects anyways so use them as material.
+        //AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos, () => RuneIsSummonable(Card));
+        //AddExecutor(ExecutorType.Summon, CardId.MulcharmyPurulia, () => RuneIsSummonable(Card));
     }
 
     public override void OnNewTurn()
     {
         ImpermanenceZonesThisTurn.Clear();
+        SerpentNegated.Clear();
+        UsedSpellTrapMaterial.Clear();
+        portalIsUsed = false;
         base.OnNewTurn();
     }
 
@@ -374,6 +392,26 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         };
     }
 
+    private bool CrystalWingRampSummon()
+    {
+        var tunerMaterials = Bot.MonsterZone.Where(card => card.Level == 1 && card.IsTuner()).ToList();
+        var otherLevel6Material = Bot.MonsterZone.Where(card => card.Level == 6 && !card.IsOriginalCode(CardId.Manipulator));
+        var manipulatorMaterial = Bot.MonsterZone.Where(card => card.IsOriginalCode(CardId.Manipulator));
+
+        // If there's another monster besides Catenicorum Manipulator to use as material, summon this Synchro monster using that card.
+        if (otherLevel6Material.Any() || manipulatorMaterial.Count() > 1)
+        {
+            tunerMaterials.AddRange(otherLevel6Material);
+            tunerMaterials.Add(manipulatorMaterial.First());
+            AI.SelectMaterials(tunerMaterials);
+            return true;
+        }
+
+        // If we have Crystal Wing Synchro Dragon in the Extra Deck and 2 Level 1 Tuners, we don't mind using the only Manipulator on the field.
+        var crystalWingAvailable = Bot.ExtraDeck.Any(card => card.GetOriginCode() == CardId.CrystalWingSynchroDragon);
+        return crystalWingAvailable && tunerMaterials.Count >= 2 && manipulatorMaterial.Any();
+    }
+
     private bool GenericLinkSummon()
     {
         // If the bot already has a better monster, don't bother summoning this monster.
@@ -500,7 +538,73 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
     }
 
-    public int SelectSTPlace(ClientCard card = null, bool avoid_Impermanence = false)
+    private bool RuneIsSummonable(ClientCard extraMaterial = null)
+    {
+        var handCards = Bot.Hand.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
+        var deckCards = portalIsUsed ? [] : Bot.Deck.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
+        return handCards.Any() || deckCards.Any();
+
+        bool CardIsSummonable(int cardId)
+        {
+            switch (cardId)
+            {
+                case CardId.Manipulator:
+                    var manipMonsterMaterials = Bot.MonsterZone.Where(card => AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
+                    var manipSTMaterials = Bot.SpellZone.Where(card => card.HasSetcode(CatenicorumSetCode) && !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
+
+                    // TODO: Improve to work with extra materials
+                    if (extraMaterial.Location is CardLocation.MonsterZone)
+                    {
+                        manipMonsterMaterials.Add(extraMaterial);
+                    }
+                    else if (extraMaterial.Location is CardLocation.SpellZone)
+                    {
+                        manipSTMaterials.Add(extraMaterial);
+                    }
+                    return manipMonsterMaterials.Count > 0 && manipSTMaterials.Count > 0;
+                case CardId.Serpent:
+                    var serpentMonsterMaterials = Bot.MonsterZone.Where(card => (card.Type & (int) CardType.Token) == 0 && AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
+                    var serpentSTMaterials = Bot.SpellZone.Where(card => card.HasSetcode(CatenicorumSetCode) && !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
+
+                    // TODO: Improve to work with extra materials
+                    if (extraMaterial.Location is CardLocation.MonsterZone)
+                    {
+                        serpentMonsterMaterials.Add(extraMaterial);
+                    }
+                    else if (extraMaterial.Location is CardLocation.SpellZone)
+                    {
+                        serpentSTMaterials.Add(extraMaterial);
+                    }
+
+                    return serpentMonsterMaterials.Count > 0 && serpentSTMaterials.Count > 0;
+                case CardId.EtherealBeast:
+                    var etherealMonsterMaterials = Bot.MonsterZone.Where(card => (card.Type & (int)CardType.Token) == 0 && AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
+                    var etherealSTMaterials = Bot.SpellZone.Where(card => !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
+
+                    // TODO: Improve to work with extra materials
+                    if (extraMaterial.Location is CardLocation.MonsterZone)
+                    {
+                        etherealMonsterMaterials.Add(extraMaterial);
+                    }
+                    else if (extraMaterial.Location is CardLocation.SpellZone)
+                    {
+                        etherealSTMaterials.Add(extraMaterial);
+                    }
+
+                    return etherealMonsterMaterials.Count >= 2 && etherealSTMaterials.Count >= 2;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    private bool ShouldRuneSummon(ClientCard clientCard = null)
+    {
+        clientCard ??= Card;
+        return true;
+    }
+
+    private int SelectSTPlace(ClientCard card = null, bool avoid_Impermanence = false)
     {
         List<int> list = new List<int> { 0, 1, 2, 3, 4 };
         int n = list.Count;
