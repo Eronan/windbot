@@ -43,6 +43,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         public const int ArtemisMagistusMoonMaiden = 34755994;
     }
 
+    public const long RuneMonsterType = 0x80000000;
+
     public const int CatenicorumSetCode = 0xfcf;
 
     private readonly List<int> CatenicorumPlaceFromGY = [
@@ -78,8 +80,10 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private readonly List<int> UsedSpellTrapMaterial = [];
 
+    // Portal Rune Summon from Deck
     private bool portalRuneFromDeckIsUsed = false;
 
+    // Extra Material Effects from Deck
     private bool portalExtraMaterialUsed = false;
 
     private bool sanctumExtraMaterialUsed = false;
@@ -87,6 +91,20 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     private bool shadowExtraMaterialUsed = false;
 
     private bool summonerExtraMaterialUsed = false;
+
+    // Used as Rune Material Effects
+    private Dictionary<int, bool> CatenicorumUsedAsMaterialFlags = new()
+    {
+        { CardId.Circle, false },
+        { CardId.Chains, false },
+        { CardId.EtherealBeast, false },
+        { CardId.Manipulator, false },
+        { CardId.Portal, false },
+        { CardId.Sanctum, false },
+        { CardId.Serpent, false },
+        { CardId.Shadow, false },
+        { CardId.Summoner, false },
+    };
 
     public CatenicorumExecutor(GameAI ai, Duel duel)
         : base(ai, duel)
@@ -136,7 +154,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         // Priority Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
         AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, CatenicorumManipulatorRuneSummon);
-        AddExecutor(ExecutorType.SpSummon, CardId.Serpent);
+        AddExecutor(ExecutorType.SpSummon, CardId.Serpent, CatenicorumSerpentRuneSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast);
 
         // Generic Special Summons
@@ -167,12 +185,21 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         SerpentNegated.Clear();
         UsedSpellTrapMaterial.Clear();
 
-        // Effect count limits.
+        // Reset portal summoned from deck flag
         portalRuneFromDeckIsUsed = false;
+
+        // Reset extra material flags
         portalExtraMaterialUsed = false;
         sanctumExtraMaterialUsed = false;
         shadowExtraMaterialUsed = false;
         summonerExtraMaterialUsed = false;
+
+        // Reset all used as material flags
+        foreach (var keyValue in CatenicorumUsedAsMaterialFlags)
+        {
+            CatenicorumUsedAsMaterialFlags[keyValue.Key] = false;
+        }
+
         base.OnNewTurn();
     }
 
@@ -306,15 +333,119 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool CatenicorumManipulatorRuneSummon()
     {
-        // Don't summon this if it's in the deck, and already exists in the hand.
-        if (Card.Location is CardLocation.Deck && Bot.HasInHand(CardId.Manipulator))
+        var hasNoManipulatorOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Manipulator, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
+        if (!hasNoManipulatorOrAllRunesExist)
         {
             return false;
         }
 
-        var monsterMaterials = GetCatenicorumMonsterMaterials();
+        // Don't summon this if it's in the deck, and already exists in the hand.
+        if (Card.Location is CardLocation.Deck)
+        {
+            // If it is already in hand, skip summoning this monster.
+            // If it is not in the monster zone, Ethereal Beast and Serpent must also already on the field.
+            return !Bot.HasInHand(CardId.Serpent) && !Bot.HasInMonstersZone(CardId.Manipulator, true, false, true) && SelectMaterials(Card);
+        }
 
-        return true;
+        return SelectMaterials(Card);
+
+        bool SelectMaterials(ClientCard summonCard)
+        {
+            var catenicorumSpellFilter = (ClientCard card) => card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+            var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
+
+            ClientCard monsterMaterial = null;
+            ClientCard spellMaterial = null;
+
+            // Chains fulfills the full material for Manipulator always.
+            var chainMaterials = SelectChainsMaterial();
+            if (chainMaterials.HasValue)
+            {
+                AI.SelectMaterials([chainMaterials.Value.chainsCard, chainMaterials.Value.monsterCard]);
+                return true;
+            }
+
+            // Using the opponent's cards is a priority over using own cards.
+            IList<ClientCard> opponentCards = [.. Enemy.MonsterZone, .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
+
+            // Get Sanctum extra material card
+            var sanctumMaterial = SelectSanctumExtraMaterial();
+            if (sanctumMaterial is not null)
+            {
+                monsterMaterial ??= sanctumMaterial.IsMonster() ? sanctumMaterial : null;
+                spellMaterial ??= sanctumMaterial.IsSpell() || sanctumMaterial.IsTrap() ? sanctumMaterial : null;
+
+                var sanctumMaterials = new List<ClientCard>();
+                sanctumMaterials.AddRange(opponentCards);
+
+                monsterMaterial ??= Bot.MonsterZone.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+                monsterMaterial ??= Bot.MonsterZone.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
+                monsterMaterial ??= Bot.MonsterZone.FirstOrDefault();
+
+                if (monsterMaterial is not null)
+                {
+                    sanctumMaterials.Add(monsterMaterial);
+                }
+
+                spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+                spellMaterial ??= availableSpellMaterial.FirstOrDefault();
+
+                if (spellMaterial is not null)
+                {
+                    sanctumMaterials.Add(spellMaterial);
+                }
+
+
+                AI.SelectMaterials(sanctumMaterials);
+                return true;
+            }
+
+            // Other extra materials
+            var summonerMaterial = SelectSummonerExtraMaterial();
+            if (summonerMaterial.HasValue)
+            {
+                AI.SelectMaterials([summonerMaterial.Value.summonerCard, summonerMaterial.Value.spellTrapCard]);
+                return true;
+            }
+
+            var shadowMaterial = SelectShadowExtraMaterial();
+            if (shadowMaterial.HasValue)
+            {
+                AI.SelectMaterials([shadowMaterial.Value.shadowCard, shadowMaterial.Value.spellTrapCard]);
+                return true;
+            }
+
+            var portalMaterial = SelectPortalExtraMaterial();
+            if (portalMaterial.HasValue)
+            {
+                AI.SelectMaterials([portalMaterial.Value.portalCard, portalMaterial.Value.monsterCard]);
+                return true;
+            }
+
+            var materials = new List<ClientCard>();
+            materials.AddRange(opponentCards);
+
+            monsterMaterial ??= Bot.MonsterZone.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+            monsterMaterial ??= Bot.MonsterZone.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
+            monsterMaterial ??= Bot.MonsterZone.FirstOrDefault();
+
+            if (monsterMaterial is not null)
+            {
+                materials.Add(monsterMaterial);
+            }
+
+            spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+            spellMaterial ??= availableSpellMaterial.FirstOrDefault();
+
+            if (spellMaterial is not null)
+            {
+                materials.Add(spellMaterial);
+            }
+
+
+            AI.SelectMaterials(materials);
+            return true;
+        }
     }
 
     private bool CatenicorumSerpentEffect()
@@ -351,6 +482,128 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         SerpentNegated.Add(chosenTarget.GetOriginCode());
         AI.SelectCard(chosenTarget);
         return true;
+    }
+
+    private bool CatenicorumSerpentRuneSummon()
+    {
+        var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Serpent, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
+        if (!hasNoSerpentOrAllRunesExist)
+        {
+            return false;
+        }
+
+        // Don't summon this if it's in the deck, and already exists in the hand.
+        if (Card.Location is CardLocation.Deck)
+        {
+            // If it is already in hand, skip summoning this monster.
+            // If it is not in the monster zone, Ethereal Beast and Serpent must also already on the field.
+            return !Bot.HasInHand(CardId.Serpent) && !Bot.HasInMonstersZone(CardId.Serpent, true, false, true) && SelectMaterials(Card);
+        }
+
+        return SelectMaterials(Card);
+
+        bool SelectMaterials(ClientCard summonCard)
+        {
+            // Get all non-Token monsters
+            var nonTokenFilter = (ClientCard card) => (card.Type & (int)CardType.Token) == 0;
+            var availableBotMonsters = Bot.MonsterZone.Where(nonTokenFilter);
+
+            // Get all Catenicorum Spell/Traps
+            var catenicorumSpellFilter = (ClientCard card) => card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+            var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
+
+            ClientCard monsterMaterial = null;
+            ClientCard spellMaterial = null;
+
+            // Chains fulfills the full material for Manipulator always.
+            var chainMaterials = SelectChainsMaterial();
+            if (chainMaterials.HasValue)
+            {
+                AI.SelectMaterials([chainMaterials.Value.chainsCard, chainMaterials.Value.monsterCard]);
+                return true;
+            }
+
+            // Using the opponent's cards is a priority over using own cards.
+            IList<ClientCard> opponentCards = [.. Enemy.MonsterZone.Where(nonTokenFilter), .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
+
+            // Get Sanctum extra material card
+            var sanctumMaterial = SelectSanctumExtraMaterial();
+            if (sanctumMaterial is not null)
+            {
+                monsterMaterial ??= sanctumMaterial.IsMonster() ? sanctumMaterial : null;
+                spellMaterial ??= sanctumMaterial.IsSpell() || sanctumMaterial.IsTrap() ? sanctumMaterial : null;
+
+                var sanctumMaterials = new List<ClientCard>();
+                sanctumMaterials.AddRange(opponentCards);
+
+                monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+                monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
+                monsterMaterial ??= availableBotMonsters.FirstOrDefault();
+
+                if (monsterMaterial is not null)
+                {
+                    sanctumMaterials.Add(monsterMaterial);
+                }
+
+                spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+                spellMaterial ??= availableSpellMaterial.FirstOrDefault();
+
+                if (spellMaterial is not null)
+                {
+                    sanctumMaterials.Add(spellMaterial);
+                }
+
+
+                AI.SelectMaterials(sanctumMaterials);
+                return true;
+            }
+
+            // Other extra materials
+            var summonerMaterial = SelectSummonerExtraMaterial();
+            if (summonerMaterial.HasValue)
+            {
+                AI.SelectMaterials([summonerMaterial.Value.summonerCard, summonerMaterial.Value.spellTrapCard]);
+                return true;
+            }
+
+            var shadowMaterial = SelectShadowExtraMaterial();
+            if (shadowMaterial.HasValue)
+            {
+                AI.SelectMaterials([shadowMaterial.Value.shadowCard, shadowMaterial.Value.spellTrapCard]);
+                return true;
+            }
+
+            var portalMaterial = SelectPortalExtraMaterial();
+            if (portalMaterial.HasValue)
+            {
+                AI.SelectMaterials([portalMaterial.Value.portalCard, portalMaterial.Value.monsterCard]);
+                return true;
+            }
+
+            var materials = new List<ClientCard>();
+            materials.AddRange(opponentCards);
+
+            monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+            monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
+            monsterMaterial ??= availableBotMonsters.FirstOrDefault();
+
+            if (monsterMaterial is not null)
+            {
+                materials.Add(monsterMaterial);
+            }
+
+            spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
+            spellMaterial ??= availableSpellMaterial.FirstOrDefault();
+
+            if (spellMaterial is not null)
+            {
+                materials.Add(spellMaterial);
+            }
+
+
+            AI.SelectMaterials(materials);
+            return true;
+        }
     }
 
     private bool CatenicorumSummonerEffect()
@@ -465,50 +718,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return true;
     }
 
-    private IList<(ClientCard, int?)> GetCatenicorumMonsterMaterials(bool includeExtra = false)
+    private bool HasUsedCatenicorumAsMaterialEffect(int cardId)
     {
-        var extraMaterial = new List<(ClientCard, int)>();
-        if (!sanctumExtraMaterialUsed && Bot.GetFieldSpellCard().IsOriginalCode(CardId.Sanctum))
-        {
-            var usableMaterials = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
-            var preferredMaterial = usableMaterials.FirstOrDefault(card => ShouldUseShadowFromDeck(card) || ShouldUseSummonerFromDeck(card));
-            if (preferredMaterial is null)
-            {
-                extraMaterial.Add((preferredMaterial, CardId.Sanctum));
-            }
-
-            if (usableMaterials.Any())
-            {
-                extraMaterial.Add((usableMaterials.First(), CardId.Sanctum));
-            }
-        }
-
-        if (extraMaterial.Count == 0 && !portalExtraMaterialUsed && Bot.HasInSpellZone(CardId.Portal))
-        {
-            var usableMaterials = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
-            var preferredMaterial = usableMaterials.FirstOrDefault(card => ShouldUseShadowFromDeck(card) || ShouldUseSummonerFromDeck(card));
-            if (preferredMaterial is null)
-            {
-                extraMaterial.Add((preferredMaterial, CardId.Portal));
-            }
-
-            if (usableMaterials.Any())
-            {
-                extraMaterial.Add((usableMaterials.First(), CardId.Portal));
-            }
-        }
-
-        return [..extraMaterial, ..Bot.MonsterZone.Select<ClientCard, (ClientCard, int?)>(card => (card, null))];
-
-        bool ShouldUseShadowFromDeck(ClientCard clientCard)
-        {
-            return clientCard.IsOriginalCode(CardId.Shadow) && !shadowExtraMaterialUsed && Bot.HasInHand(CardId.Shadow);
-        }
-
-        bool ShouldUseSummonerFromDeck(ClientCard clientCard)
-        {
-            return clientCard.IsOriginalCode(CardId.Summoner) && !summonerExtraMaterialUsed && Bot.HasInHand(CardId.Summoner);
-        }
+        var used = false;
+        CatenicorumUsedAsMaterialFlags.TryGetValue(cardId, out used);
+        return used;
     }
 
     public bool InfiniteImpermanenceActivate()
@@ -671,10 +885,218 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
     }
 
-    private bool ShouldRuneSummon(ClientCard clientCard = null)
+    private (ClientCard chainsCard, ClientCard monsterCard)? SelectChainsMaterial()
     {
-        clientCard ??= Card;
-        return true;
+        if (!Bot.HasInSpellZone(CardId.Chains, true, true))
+        {
+            return null;
+        }
+
+        var chainsCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains) && card.IsFaceup() && !card.IsDisabled());
+        return (chainsCard, chainsCard.EquipTarget);
+    }
+
+    private (ClientCard portalCard, ClientCard monsterCard)? SelectPortalExtraMaterial()
+    {
+        if (portalExtraMaterialUsed || !Bot.HasInSpellZone(CardId.Portal, true, true))
+        {
+            return null;
+        }
+
+        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal) && card.IsFaceup() && !card.IsDisabled());
+
+        ClientCard portalMaterial = null;
+        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
+        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
+
+        // Choose a preferred one.
+        portalMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
+
+        // If nothing is preferred, just choose in the same order.
+        portalMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
+
+        return (portalCard, portalMaterial);
+
+        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
+        {
+            // Prioritise Shadow and then Summoner as materials
+            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
+
+            // Prioritise Serpent next
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
+
+            // Manipulator after Serpent
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
+
+            return sanctumMaterial;
+        }
+    }
+
+    private ClientCard SelectSanctumExtraMaterial()
+    {
+        if (sanctumExtraMaterialUsed || !Bot.HasInSpellZone(CardId.Sanctum, true, true))
+        {
+            return null;
+        }
+
+        ClientCard sanctumMaterial = null;
+        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
+        var preferredDeckMaterial = availableDeckMaterial.Where(card => !card.IsOriginalCode(CardId.Sanctum) && ShouldUseCatenicorumAsMaterialFromDeck(card));
+
+        // If the bot has no other Rune monsters in hand, portal is the first one to be retrieved always so that the Bot can continue extending.
+        if (!portalRuneFromDeckIsUsed && !portalExtraMaterialUsed && !Bot.Hand.Any(card => (card.Type & RuneMonsterType) > 0 && !card.Equals(Card)))
+        {
+            sanctumMaterial = availableDeckMaterial.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+        }
+
+        // Choose a preferred one.
+        sanctumMaterial ??= PreferredSanctumExtraMaterialOrder(preferredDeckMaterial);
+
+        // If nothing is preferred, just choose in the same order.
+        sanctumMaterial ??= PreferredSanctumExtraMaterialOrder(availableDeckMaterial);
+
+        return sanctumMaterial;
+
+        ClientCard PreferredSanctumExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
+        {
+            // Prioritise Shadow and then Summoner as materials
+            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
+
+            // Prioritise Serpent next
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
+
+            // Manipulator after Serpent
+            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
+
+            // Portal is preferred if no preferred monsters are available
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+
+            // Binding is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+
+            // Circle is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+
+            // Chains is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+
+            return sanctumMaterial;
+        }
+    }
+
+    private (ClientCard shadowCard, ClientCard spellTrapCard)? SelectShadowExtraMaterial()
+    {
+        if (shadowExtraMaterialUsed || !Bot.HasInMonstersZone(CardId.Shadow, true, true))
+        {
+            return null;
+        }
+
+        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow) && card.IsFaceup() && !card.IsDisabled());
+
+        ClientCard sanctumMaterial = null;
+        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
+        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
+
+        // Choose a preferred one.
+        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
+
+        // If nothing is preferred, just choose in the same order.
+        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
+
+        return (portalCard, sanctumMaterial);
+
+        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
+        {
+            // Portal is preferred if no preferred monsters are available
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+
+            // Binding is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+
+            // Circle is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+
+            // Chains is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+
+            return sanctumMaterial;
+        }
+    }
+
+    private (ClientCard summonerCard, ClientCard spellTrapCard)? SelectSummonerExtraMaterial()
+    {
+        if (summonerExtraMaterialUsed || !Bot.HasInMonstersZone(CardId.Summoner, true, true))
+        {
+            return null;
+        }
+
+        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner) && card.IsFaceup() && !card.IsDisabled());
+
+        ClientCard sanctumMaterial = null;
+        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
+        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
+
+        // Choose a preferred one.
+        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
+
+        // If nothing is preferred, just choose in the same order.
+        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
+
+        return (portalCard, sanctumMaterial);
+
+        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
+        {
+            // Portal is preferred if no preferred monsters are available
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+
+            // Binding is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+
+            // Circle is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+
+            // Chains is preferred next
+            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+
+            return sanctumMaterial;
+        }
+    }
+
+    private bool ShouldUseCatenicorumAsMaterialFromDeck(ClientCard clientCard)
+    {
+        var code = clientCard.GetOriginCode();
+        if (HasUsedCatenicorumAsMaterialEffect(code))
+        {
+            return false;
+        }
+
+        switch (code)
+        {
+            case CardId.Shadow:
+                return !shadowExtraMaterialUsed && !Bot.HasInHand(code);
+            case CardId.Summoner:
+                return !Bot.HasInHand(code);
+            case CardId.Manipulator:
+                return Enemy.MonsterZone.Any(card => card.IsFaceup() && !card.IsDisabled()) || Enemy.SpellZone.Any(card => card.IsFaceup() && !card.IsDisabled());
+            case CardId.Serpent:
+                return Bot.HasInGraveyard([CardId.Shadow, CardId.Summoner]);
+            case CardId.EtherealBeast:
+                return Bot.HasInHand(CatenicorumRunes);
+            case CardId.Portal:
+                return !Bot.HasInHandOrInSpellZone(CardId.Portal);
+            case CardId.Sanctum:
+                return !Bot.HasInHandOrInSpellZone(CardId.Sanctum);
+            case CardId.Circle:
+                return !Bot.HasInHandOrInSpellZone(CardId.Circle);
+            case CardId.Binding:
+                return !Bot.HasInHandOrInSpellZone(CardId.Binding);
+            case CardId.Chains:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private int SelectSTPlace(ClientCard card = null, bool avoid_Impermanence = false)
