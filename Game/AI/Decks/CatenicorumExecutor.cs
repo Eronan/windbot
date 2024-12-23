@@ -24,6 +24,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         public const int PotOfProsperity = 84211599;
         public const int MulcharmyFuwalos = 42141493;
         public const int MulcharmyPurulia = 84192580;
+        public const int RunedRecovery = 952510934;
         public const int ChangeOfHeart = 4031928;
         public const int SuperStarslayerTYPHON = 93039339;
         public const int HopeHarbingerDragonTitanicGalaxy = 63767246;
@@ -132,6 +133,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         // Starters
         AddExecutor(ExecutorType.Activate, CardId.PotOfProsperity, AvoidImpermanenceActivate(PotofProsperityActivate));
+        AddExecutor(ExecutorType.Activate, CardId.Circle, CatenicorumCircleEffect);
+        AddExecutor(ExecutorType.Activate, CardId.RunedRecovery, AvoidImpermanenceActivate(() => true));
 
         // Extenders
         AddExecutor(ExecutorType.Activate, CardId.AussaEarthCharmerImmovable);
@@ -139,7 +142,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.BorrelswordDragon, BorrelswordEffect);
         AddExecutor(ExecutorType.Activate, CardId.Summoner, CatenicorumSummonerEffect);
         AddExecutor(ExecutorType.Activate, CardId.Shadow);
-        AddExecutor(ExecutorType.Activate, CardId.Circle, CatenicorumCircleEffect);
         AddExecutor(ExecutorType.Activate, CardId.Binding, CatenicorumBindingEffect);
         AddExecutor(ExecutorType.Activate, CardId.Portal, AvoidImpermanenceActivate(() => true));
         AddExecutor(ExecutorType.Activate, CardId.Chains, AvoidImpermanenceActivate(() => true));
@@ -176,6 +178,18 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         // Mulcharmy Normal Summons, if we can normal summon them. We can't activate their effects anyways so use them as material.
         AddExecutor(ExecutorType.Summon, CardId.MulcharmyPurulia);
         AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
+
+        // Set Spell/Trap cards if they can't be activated.
+        AddExecutor(ExecutorType.SpellSet, CardId.Circle);
+        AddExecutor(ExecutorType.SpellSet, CardId.Binding);
+        AddExecutor(ExecutorType.SpellSet, _CardId.InfiniteImpermanence);
+        AddExecutor(ExecutorType.SpellSet, _CardId.CalledByTheGrave);
+        AddExecutor(ExecutorType.SpellSet, CardId.Sanctum);
+        AddExecutor(ExecutorType.SpellSet, CardId.Portal);
+        AddExecutor(ExecutorType.SpellSet, CardId.Chains);
+        AddExecutor(ExecutorType.SpellSet, CardId.ChangeOfHeart);
+        AddExecutor(ExecutorType.SpellSet, _CardId.HarpiesFeatherDuster);
+        AddExecutor(ExecutorType.SpellSet, CardId.PotOfProsperity);
     }
 
     public override void OnChaining(int player, ClientCard card)
@@ -335,11 +349,25 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool CatenicorumBindingEffect()
     {
-        if (Card.Location is not CardLocation.SpellZone)
+        if (Card.Location is CardLocation.Grave or CardLocation.Removed)
         {
             // If it's been used as material, always activate it whenever available in a zone not imperm'd.
-            SelectSTPlace(Card);
+            SelectSTPlace(Card, true);
             return true;
+        }
+
+
+        // Always activate the card at the first opportunity.
+        if (Card.Location is CardLocation.Hand || (Card.IsFacedown() && Card.Location is CardLocation.SpellZone))
+        {
+            SelectSTPlace(Card, true);
+            return true;
+        }
+
+        // If it's disabled, it should only be used to increase the chain link when no other copies of it exist.
+        if (Card.IsDisabled() && (Bot.SpellZone.Count(card => card != null && card.IsOriginalCode(CardId.Binding)) > 1 || Duel.CurrentChain.Count > 2))
+        {
+            return false;
         }
 
         var negateTargets = Duel.CurrentChain.Where(card => card.Controller == 1 && card.Location is CardLocation.Onfield).ToList();
@@ -361,16 +389,32 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool CatenicorumCircleEffect()
     {
-        if (Card.Location is not CardLocation.SpellZone)
+        if (Card.Location is CardLocation.Grave or CardLocation.Removed)
         {
             // If it's been used as material, always activate it whenever available in a zone not imperm'd.
-            SelectSTPlace(Card);
+            SelectSTPlace(Card, true);
             return true;
         }
 
+        // Always activate the card at the first opportunity.
+        if (Card.Location is CardLocation.Hand || (Card.IsFacedown() && Card.Location is CardLocation.SpellZone))
+        {
+            SelectSTPlace(Card, true);
+            return true;
+        }
+
+        // If it's disabled, it should only be used to increase the chain link when no other copies of it exist.
+        if (Card.IsDisabled() && (Bot.SpellZone.Count(card => card != null && card.IsOriginalCode(CardId.Circle)) > 1 || Duel.CurrentChain.Count > 2))
+        {
+            return false;
+        }
+
+        var onlyCardOnField = Bot.MonsterZone.All(card => card == null) && Bot.SpellZone.All(card => card == null || card.Equals(Card));
+        var opponentsTurn = Duel.Player == 1;
+
         // To improve after creating summon proc functions.
         var shouldSummonCard = Bot.Hand.Any(card => CatenicorumRunes.Contains(card.GetOriginCode()) && !Bot.HasInMonstersZone(card.GetOriginCode()));
-        return shouldSummonCard;
+        return shouldSummonCard && (opponentsTurn || onlyCardOnField);
     }
 
     private bool CatenicorumEtherealBeastRuneSummon()
@@ -1080,6 +1124,34 @@ public sealed class CatenicorumExecutor : DefaultExecutor
                 cardsId.Add(cardId);
             }
         }
+    }
+
+    private bool RunedRecoveryEffectActivate()
+    {
+        // If it's being activated from face-up field, always activate.
+        if (Card.Location is CardLocation.SpellZone && Card.IsFaceup())
+        {
+            return true;
+        }
+
+        // Unknown effect, don't activate.
+        if (Card.Location is not CardLocation.Hand or CardLocation.SpellZone)
+        {
+            return false;
+        }
+
+        if (Card.Location is CardLocation.Hand)
+        {
+            SelectSTPlace(Card, true);
+        }
+
+        AI.SelectYesNo(true);
+
+        var catenicorumRunes = Bot.Deck.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()));
+        var priorityRunes = catenicorumRunes.Where(card => !Bot.HasInHandOrHasInMonstersZone(card.GetOriginCode()));
+        AI.SelectCard([..priorityRunes, ..catenicorumRunes, ..Bot.Deck]);
+
+        return false;
     }
 
     private (ClientCard chainsCard, ClientCard monsterCard)? SelectChainsMaterial()
