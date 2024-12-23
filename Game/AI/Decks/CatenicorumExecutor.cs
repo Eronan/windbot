@@ -3,10 +3,7 @@ namespace WindBot.Game.AI.Decks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using WindBot.Game;
-using YGOSharp.OCGWrapper;
 using YGOSharp.OCGWrapper.Enums;
 
 [Deck("Catenicorum", "AI_Catenicorum")]
@@ -273,6 +270,14 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         Logger.DebugWriteLine($"Hand: {{{string.Join(", ", Bot.Hand.Select(card => card.Name))}}}");
         base.OnNewPhase();
+    }
+
+    /// <summary>
+    /// go first
+    /// </summary>
+    public override bool OnSelectHand()
+    {
+        return true;
     }
 
     public Func<bool> AvoidImpermanenceActivate(Func<bool> func)
@@ -1052,14 +1057,14 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         // To add to hand
         List<int> cardsId = [];
-        AddToProsperityList(CardId.Summoner, Bot.HasInHandOrHasInMonstersZone);
-        AddToProsperityList(CardId.Shadow, Bot.HasInHandOrHasInMonstersZone);
-        AddToProsperityList(CardId.Portal, Bot.HasInHandOrInSpellZone);
-        AddToProsperityList(CardId.Sanctum, Bot.HasInHandOrInSpellZone);
+        AddToProsperityList(CardId.Summoner, cardId => !Bot.HasInHandOrHasInMonstersZone(cardId));
+        AddToProsperityList(CardId.Shadow, cardId => !Bot.HasInHandOrHasInMonstersZone(cardId));
+        AddToProsperityList(CardId.Portal, cardId => !Bot.HasInHandOrInSpellZone(cardId));
+        AddToProsperityList(CardId.Sanctum, cardId => !Bot.HasInSpellZone(cardId));
         AddToProsperityList(CardId.Manipulator);
         AddToProsperityList(CardId.Serpent);
         AddToProsperityList(CardId.EtherealBeast);
-        AddToProsperityList(CardId.Circle, cardId => Bot.IsFieldEmpty());
+        AddToProsperityList(CardId.Circle, cardId => Bot.MonsterZone.All(card => card == null) && Bot.SpellZone.All(card => card == null || card.Equals(Card)));
         AddToProsperityList(CardId.ChangeOfHeart);
         AddToProsperityList(_CardId.HarpiesFeatherDuster);
         cardsId.AddRange(new List<int>() { _CardId.CalledByTheGrave, _CardId.InfiniteImpermanence, _CardId.AshBlossom });
