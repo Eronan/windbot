@@ -195,7 +195,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         summonerExtraMaterialUsed = false;
 
         // Reset all used as material flags
-        foreach (var key in CatenicorumUsedAsMaterialFlags.Keys)
+        var flagKeys = CatenicorumUsedAsMaterialFlags.Keys.ToArray();
+        foreach (var key in flagKeys)
         {
             CatenicorumUsedAsMaterialFlags[key] = false;
         }
