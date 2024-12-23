@@ -151,6 +151,10 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.CyberseQuantumDragon);
         AddExecutor(ExecutorType.Activate, CardId.HopeHarbingerDragonTitanicGalaxy);
 
+        // Catenicorum Normal Summons
+        AddExecutor(ExecutorType.Summon, CardId.Summoner);
+        AddExecutor(ExecutorType.Summon, CardId.Shadow);
+
         // Priority Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
         AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, CatenicorumManipulatorRuneSummon);
@@ -169,10 +173,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.SpSummon, CardId.HiitaFireCharmerAblaze, CharmerSpecial(CardId.HiitaFireCharmerAblaze, CardAttribute.Fire));
         AddExecutor(ExecutorType.SpSummon, CardId.DecodeTalker, GenericLinkSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, SuperStarslayerTYPHONSpSummon);
-
-        // Catenicorum Normal Summons
-        AddExecutor(ExecutorType.Summon, CardId.Summoner);
-        AddExecutor(ExecutorType.Summon, CardId.Shadow);
 
         // Mulcharmy Normal Summons, if we can normal summon them. We can't activate their effects anyways so use them as material.
         AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
