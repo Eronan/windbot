@@ -1302,7 +1302,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return 0;
     }
 
-    private IList<ClientCard> SuperStarslayerTYPHONTarget()
+    private IList<ClientCard> SuperStarslayerTYPHONTarget(int attack = 0)
     {
         List<ClientCard> targetList =
         [
@@ -1312,25 +1312,25 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             .. Enemy.GetMonsters()
                 .Where(c => c.IsMonsterDangerous() && c.IsFaceup())
                 .OrderByDescending(card => card.Attack),
-            .. Enemy.GetMonsters()
-                .Where(c => c.IsMonsterInvincible() && c.IsFaceup())
-                .OrderByDescending(card => card.Attack),
-            .. Enemy.GetMonsters()
-                .Where(c => c.GetDefensePower() >= Util.GetBestAttack(Bot) &&c.IsAttack())
-                .OrderByDescending(card => card.Attack),
         ];
 
         if (Duel.Phase >= DuelPhase.Main2)
         {
             targetList.AddRange(Enemy.GetMonsters()
+                .Where(c => c.IsMonsterInvincible() && c.IsFaceup())
+                .OrderByDescending(card => card.Attack));
+            targetList.AddRange(Enemy.GetMonsters()
+                .Where(c => c.GetDefensePower() >= Util.GetBestAttack(Bot) && c.IsAttack())
+                .OrderByDescending(card => card.Attack));
+            targetList.AddRange(Enemy.GetMonsters()
                 .Where(c => c.HasType(CardType.Fusion | CardType.Synchro | CardType.Xyz | CardType.Link | CardType.SpSummon))
                 .OrderByDescending(card => card.Attack));
         }
 
-        var monsterTarget = Util.GetProblematicEnemyMonster(0, false);
+        var monsterTarget = Util.GetProblematicEnemyMonster(attack, false);
         if (monsterTarget is not null)
         {
-            targetList.Add(monsterTarget):
+            targetList.Add(monsterTarget);
         }
 
         if (targetList.Count > 0)
@@ -1367,10 +1367,16 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool SuperStarslayerTYPHONSpSummon()
     {
-        ClientCard material = Bot.GetMonsters().Where(card => card.IsFaceup() && AvoidAllMaterials.Contains(card.GetOriginCode())).OrderByDescending(card => card.Attack).FirstOrDefault();
-        if (material == null || (material.Attack >= 2900 && material.Owner == 0)) return false;
+        ClientCard material = Bot.GetMonsters().Where(card => card.IsFaceup()).OrderByDescending(card => card.Attack).FirstOrDefault();
+        var problematicCards = SuperStarslayerTYPHONTarget(material.Attack);
 
-        bool checkFlag = Util.GetProblematicEnemyMonster(material.Attack) != null;
+        // TY-PHON ignores the AvoidAllMaterials condition in Main Phase 2
+        if (material == null || problematicCards.Count == 0 || AvoidGenericMaterials.Contains(material.GetOriginCode()))
+        {
+            return false;
+        }
+
+        bool checkFlag = ;
         checkFlag |= material.Level <= 4;
         checkFlag &= !(material.HasType(CardType.Link) && Duel.Phase >= DuelPhase.Main2);
         if (checkFlag)
