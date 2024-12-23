@@ -80,6 +80,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private readonly List<int> UsedSpellTrapMaterial = [];
 
+    private bool enemyActivateInfiniteImpermanenceFromHand = false;
+
     // Portal Rune Summon from Deck
     private bool portalRuneFromDeckIsUsed = false;
 
@@ -179,6 +181,69 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
     }
 
+    public override void OnChaining(int player, ClientCard card)
+    {
+        if (player == 1)
+        {
+            if (card.IsOriginalCode(_CardId.InfiniteImpermanence))
+            {
+                if (enemyActivateInfiniteImpermanenceFromHand)
+                {
+                    enemyActivateInfiniteImpermanenceFromHand = false;
+                }
+                else
+                {
+                    for (int i = 0; i < 5; ++i)
+                    {
+                        if (Enemy.SpellZone[i] == card)
+                        {
+                            ImpermanenceZonesThisTurn.Add(4 - i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        base.OnChaining(player, card);
+    }
+
+    public override void OnChainSolved(int chainIndex)
+    {
+        var card = Duel.CurrentChain[chainIndex];
+
+        switch (card.GetOriginCode())
+        {
+            case _CardId.InfiniteImpermanence:
+                ImpermanenceZonesThisTurn.Add(4 - card.Sequence);
+                break;
+        }
+
+        base.OnChainSolved(chainIndex);
+    }
+
+    public override void OnChainEnd()
+    {
+        enemyActivateInfiniteImpermanenceFromHand = false;
+        base.OnChainEnd();
+    }
+
+    public override void OnMove(ClientCard card, int previousControler, int previousLocation, int currentControler, int currentLocation)
+    {
+        if (previousControler == 1)
+        {
+            if (card != null)
+            {
+                if (card.IsCode(_CardId.InfiniteImpermanence) && previousLocation == (int)CardLocation.Hand && currentLocation == (int)CardLocation.SpellZone)
+                {
+                    enemyActivateInfiniteImpermanenceFromHand = true;
+                }
+            }
+        }
+
+        base.OnMove(card, previousControler, previousLocation, currentControler, currentLocation);
+    }
+
     public override void OnNewTurn()
     {
         ImpermanenceZonesThisTurn.Clear();
@@ -204,10 +269,10 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         base.OnNewTurn();
     }
 
-    public override int OnSelectPlace(int cardId, int player, CardLocation location, int available)
+    public override void OnNewPhase()
     {
-        Logger.WriteLine($"Hand Size: {Bot.Hand.Count}");
-        return base.OnSelectPlace(cardId, player, location, available);
+        Logger.DebugWriteLine($"Hand: {{{string.Join(", ", Bot.Hand.Select(card => card.Name))}}}");
+        base.OnNewPhase();
     }
 
     public Func<bool> AvoidImpermanenceActivate(Func<bool> func)
