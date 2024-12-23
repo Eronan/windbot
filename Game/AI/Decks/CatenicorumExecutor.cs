@@ -1089,7 +1089,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return null;
         }
 
-        var chainsCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains) && card.IsFaceup() && !card.IsDisabled());
+        var chainsCard = Bot.SpellZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Chains) && card.IsFaceup() && !card.IsDisabled());
         return (chainsCard, chainsCard.EquipTarget);
     }
 
@@ -1100,10 +1100,10 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return null;
         }
 
-        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal) && card.IsFaceup() && !card.IsDisabled());
+        var portalCard = Bot.SpellZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Portal) && card.IsFaceup() && !card.IsDisabled());
 
         ClientCard portalMaterial = null;
-        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
+        var availableDeckMaterial = Bot.Deck.Where(card => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
         var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
 
         // Choose a preferred one.
@@ -1190,7 +1190,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return null;
         }
 
-        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow) && card.IsFaceup() && !card.IsDisabled());
+        var portalCard = Bot.MonsterZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Shadow) && card.IsFaceup() && !card.IsDisabled());
 
         ClientCard sanctumMaterial = null;
         var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
@@ -1229,7 +1229,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return null;
         }
 
-        var portalCard = Bot.SpellZone.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner) && card.IsFaceup() && !card.IsDisabled());
+        var portalCard = Bot.MonsterZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Summoner) && card.IsFaceup() && !card.IsDisabled());
 
         ClientCard sanctumMaterial = null;
         var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
