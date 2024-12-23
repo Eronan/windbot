@@ -129,6 +129,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         // Going second blowouts
         AddExecutor(ExecutorType.Activate, _CardId.HarpiesFeatherDuster, AvoidImpermanenceActivate(DefaultHarpiesFeatherDusterFirst));
         AddExecutor(ExecutorType.Activate, CardId.ChangeOfHeart, AvoidImpermanenceActivate(() => true));
+        AddExecutor(ExecutorType.Activate, CardId.SuperStarslayerTYPHON, SuperStarslayerTYPHONActivate);
 
         // Starters
         AddExecutor(ExecutorType.Activate, CardId.PotOfProsperity, AvoidImpermanenceActivate(PotofProsperityActivate));
@@ -149,7 +150,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.GaiaBlazeForceOfTheSun);
         AddExecutor(ExecutorType.Activate, CardId.CyberseQuantumDragon);
         AddExecutor(ExecutorType.Activate, CardId.HopeHarbingerDragonTitanicGalaxy);
-        AddExecutor(ExecutorType.Activate, CardId.SuperStarslayerTYPHON);
 
         // Priority Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
@@ -168,7 +168,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.SpSummon, CardId.EriaWaterCharmerGentle, CharmerSpecial(CardId.EriaWaterCharmerGentle, CardAttribute.Water));
         AddExecutor(ExecutorType.SpSummon, CardId.HiitaFireCharmerAblaze, CharmerSpecial(CardId.HiitaFireCharmerAblaze, CardAttribute.Fire));
         AddExecutor(ExecutorType.SpSummon, CardId.DecodeTalker, GenericLinkSummon);
-        AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, () => Duel.Phase is DuelPhase.Main2);
+        AddExecutor(ExecutorType.SpSummon, CardId.SuperStarslayerTYPHON, SuperStarslayerTYPHONSpSummon);
 
         // Catenicorum Normal Summons
         AddExecutor(ExecutorType.Summon, CardId.Summoner);
@@ -1300,5 +1300,77 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             };
         }
         return 0;
+    }
+
+    private bool SuperStarslayerTYPHONActivate()
+    {
+        if (Card.IsDisabled())
+        {
+            return false;
+        }
+
+        List<ClientCard> targetList =
+        [
+            .. Enemy.GetMonsters()
+                .Where(c => c.IsFloodgate() &&c.IsFaceup())
+                .OrderByDescending(card => card.Attack),
+            .. Enemy.GetMonsters()
+                .Where(c => c.IsMonsterDangerous() && c.IsFaceup())
+                .OrderByDescending(card => card.Attack),
+            .. Enemy.GetMonsters()
+                .Where(c => c.IsMonsterInvincible() && c.IsFaceup())
+                .OrderByDescending(card => card.Attack),
+            .. Enemy.GetMonsters()
+                .Where(c => c.GetDefensePower() >= Util.GetBestAttack(Bot) &&c.IsAttack())
+                .OrderByDescending(card => card.Attack),
+        ];
+
+        if (Duel.Phase >= DuelPhase.Main2)
+        {
+            targetList.AddRange(Enemy.GetMonsters()
+                .Where(c => c.HasType(CardType.Fusion | CardType.Synchro | CardType.Xyz | CardType.Link | CardType.SpSummon))
+                .OrderByDescending(card => card.Attack));
+        }
+
+        // Best case scenario targeting.
+        if (targetList.Count() > 0)
+        {
+            targetList.AddRange(Enemy.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderByDescending(card => card.Attack));
+            targetList.AddRange(Bot.GetMonsters().Where(card => card.IsFaceup() && !targetList.Contains(card)).OrderBy(card => card.Attack));
+            AI.SelectCard(Card.Overlays);
+            Logger.DebugWriteLine("TYPHON first target: " + targetList[0]?.Name ?? "UNKNOWN");
+            AI.SelectNextCard(targetList);
+            return true;
+        }
+
+        // Just use the effect, because we plan to remove it from the field by summoning over it next turn.
+        var monsterTarget = Util.GetProblematicEnemyMonster(0, false);
+        if (monsterTarget is not null)
+        {
+            AI.SelectCard(Card.Overlays);
+            AI.SelectNextCard(monsterTarget);
+            return true;
+        }
+
+        // No target to use it against, don't use it.
+        return false;
+    }
+
+    private bool SuperStarslayerTYPHONSpSummon()
+    {
+        ClientCard material = Bot.GetMonsters().Where(card => card.IsFaceup() && AvoidAllMaterials.Contains(card.GetOriginCode())).OrderByDescending(card => card.Attack).FirstOrDefault();
+        if (material == null || (material.Attack >= 2900 && material.Owner == 0)) return false;
+
+        bool checkFlag = Util.GetProblematicEnemyMonster(material.Attack) != null;
+        checkFlag |= material.Level <= 4;
+        checkFlag &= !(material.HasType(CardType.Link) && Duel.Phase >= DuelPhase.Main2);
+        if (checkFlag)
+        {
+            Logger.DebugWriteLine("*** TYPHON select: " + material.Name ?? "UnkonwCard");
+            AI.SelectMaterials(material);
+            return true;
+        }
+
+        return false;
     }
 }
