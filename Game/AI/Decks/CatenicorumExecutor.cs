@@ -175,8 +175,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Summon, CardId.Shadow);
 
         // Mulcharmy Normal Summons, if we can normal summon them. We can't activate their effects anyways so use them as material.
-        //AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos, () => RuneIsSummonable(Card));
-        //AddExecutor(ExecutorType.Summon, CardId.MulcharmyPurulia, () => RuneIsSummonable(Card));
+        AddExecutor(ExecutorType.Summon, CardId.MulcharmyFuwalos);
+        AddExecutor(ExecutorType.Summon, CardId.MulcharmyPurulia);
     }
 
     public override void OnNewTurn()
@@ -195,9 +195,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         summonerExtraMaterialUsed = false;
 
         // Reset all used as material flags
-        foreach (var keyValue in CatenicorumUsedAsMaterialFlags)
+        foreach (var key in CatenicorumUsedAsMaterialFlags.Keys)
         {
-            CatenicorumUsedAsMaterialFlags[keyValue.Key] = false;
+            CatenicorumUsedAsMaterialFlags[key] = false;
         }
 
         base.OnNewTurn();
@@ -1001,66 +1001,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             if (condition(cardId))
             {
                 cardsId.Add(cardId);
-            }
-        }
-    }
-
-    private bool RuneIsSummonable(ClientCard extraMaterial = null)
-    {
-        var handCards = Bot.Hand.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
-        var deckCards = portalRuneFromDeckIsUsed ? [] : Bot.Deck.Where(card => CatenicorumRunes.Contains(card.GetOriginCode()) && CardIsSummonable(card.GetOriginCode()));
-        return handCards.Any() || deckCards.Any();
-
-        bool CardIsSummonable(int cardId)
-        {
-            switch (cardId)
-            {
-                case CardId.Manipulator:
-                    var manipMonsterMaterials = Bot.MonsterZone.Where(card => AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
-                    var manipSTMaterials = Bot.SpellZone.Where(card => card.HasSetcode(CatenicorumSetCode) && !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
-
-                    // TODO: Improve to work with extra materials
-                    if (extraMaterial.Location is CardLocation.MonsterZone)
-                    {
-                        manipMonsterMaterials.Add(extraMaterial);
-                    }
-                    else if (extraMaterial.Location is CardLocation.SpellZone)
-                    {
-                        manipSTMaterials.Add(extraMaterial);
-                    }
-                    return manipMonsterMaterials.Count > 0 && manipSTMaterials.Count > 0;
-                case CardId.Serpent:
-                    var serpentMonsterMaterials = Bot.MonsterZone.Where(card => (card.Type & (int) CardType.Token) == 0 && AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
-                    var serpentSTMaterials = Bot.SpellZone.Where(card => card.HasSetcode(CatenicorumSetCode) && !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
-
-                    // TODO: Improve to work with extra materials
-                    if (extraMaterial.Location is CardLocation.MonsterZone)
-                    {
-                        serpentMonsterMaterials.Add(extraMaterial);
-                    }
-                    else if (extraMaterial.Location is CardLocation.SpellZone)
-                    {
-                        serpentSTMaterials.Add(extraMaterial);
-                    }
-
-                    return serpentMonsterMaterials.Count > 0 && serpentSTMaterials.Count > 0;
-                case CardId.EtherealBeast:
-                    var etherealMonsterMaterials = Bot.MonsterZone.Where(card => (card.Type & (int)CardType.Token) == 0 && AvoidGenericMaterials.Contains(card.GetOriginCode())).ToList();
-                    var etherealSTMaterials = Bot.SpellZone.Where(card => !UsedSpellTrapMaterial.Contains(card.GetOriginCode())).ToList();
-
-                    // TODO: Improve to work with extra materials
-                    if (extraMaterial.Location is CardLocation.MonsterZone)
-                    {
-                        etherealMonsterMaterials.Add(extraMaterial);
-                    }
-                    else if (extraMaterial.Location is CardLocation.SpellZone)
-                    {
-                        etherealSTMaterials.Add(extraMaterial);
-                    }
-
-                    return etherealMonsterMaterials.Count >= 2 && etherealSTMaterials.Count >= 2;
-                default:
-                    return false;
             }
         }
     }
