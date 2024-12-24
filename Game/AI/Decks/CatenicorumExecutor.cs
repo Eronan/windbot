@@ -82,16 +82,17 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool enemyActivateInfiniteImpermanenceFromHand = false;
 
-    // Attempted to cancel Ethereal Beast Rune Summon
-    private bool attemptedEtherealBeastCancel = false;
+    // For counting the number of materials used within a Rune Summon.
+    private (int monsterCount, int spellCount, int bothCount) runeMaterialCount = (0, 0, 0);
+
+    // For counting the number of in-archetype materials used for a Rune Summon.
+    private int runeMaterialCatenicorumCount = 0;
 
     // Portal Rune Summon from Deck
     private bool portalRuneFromDeckIsUsed = false;
 
     // Extra Material Effects from Deck
     private bool portalExtraMaterialUsed = false;
-
-    private bool sanctumExtraMaterialUsed = false;
 
     private bool shadowExtraMaterialUsed = false;
 
@@ -257,6 +258,12 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             }
         }
 
+        if (currentLocation == (int)CardLocation.MonsterZone && card.IsSpecialSummoned)
+        {
+            // Reset the material count, because it's already been summoned.
+            runeMaterialCount = (0, 0, 0);
+        }
+
         base.OnMove(card, previousControler, previousLocation, currentControler, currentLocation);
     }
 
@@ -271,7 +278,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         // Reset extra material flags
         portalExtraMaterialUsed = false;
-        sanctumExtraMaterialUsed = false;
         shadowExtraMaterialUsed = false;
         summonerExtraMaterialUsed = false;
 
@@ -307,41 +313,75 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         Logger.WriteLine($"Selecting materials for Rune Monster {Card.Name}.");
 
         // Prefer selecting opponent's cards.
-        var selectedMonsterMaterials = Util.SelectPreferredCards(Enemy.MonsterZone.OrderBy(card => card?.GetDefensePower() ?? 0).ToList(), cards, min, max);
-        var selectedSpellMaterials = Util.SelectPreferredCards(Enemy.SpellZone.OrderBy(card => card?.IsFloodgate() == true ? 99 : 0).ToList(), cards, min, max);
+        var enemyMonsterMaterials = Util.SelectPreferredCards(Enemy.MonsterZone.OrderBy(card => card?.GetDefensePower() ?? 0).ToList(), cards, min, max);
+        var enemySpellMaterials = Util.SelectPreferredCards(Enemy.SpellZone.OrderBy(card => card?.IsFloodgate() == true ? 99 : 0).ToList(), cards, min, max);
 
         // Refresh the Rune Selection list, until we've selected all of the opponent's cards.
-        if (selectedMonsterMaterials.Any() || selectedSpellMaterials.Any())
+        if (enemyMonsterMaterials.Any() || enemySpellMaterials.Any())
         {
-            return [.. selectedMonsterMaterials, .. selectedSpellMaterials];
+            return CheckSelectCountAndIncrement([.. enemyMonsterMaterials, .. enemySpellMaterials], cards, min, max);
         }
 
         // If we don't have details as to the Rune monster, just summon it with priority to the opponent's cards.
         if (!CatenicorumRunes.Contains(Card.GetOriginCode()))
         {
-            var result = Util.SelectPreferredCards([.. selectedMonsterMaterials, ..selectedSpellMaterials], cards, min, max);
-            return Util.CheckSelectCount(result, cards, min, max);
+            return CheckSelectCountAndIncrement([], cards, min, max);
         }
 
-        // If Ethereal Beast is being summoned, and its conditions have been fulilled cancel the summon.
-        //if (Card.IsOriginalCode(CardId.EtherealBeast))
-        //{
-        //    return Util.CheckSelectCount(cards, cards, min, max);
-        //}
+        //If Ethereal Beast is being summoned, and its conditions have been fulilled cancel the summon.
+        if (Card.IsOriginalCode(CardId.EtherealBeast) && RuneConditionFulfilled(2,2) && runeMaterialCatenicorumCount >= 2)
+        {
+            return null;
+        }
 
         var nextDeckCard = SelectNextRuneMaterialFromDeck(Card, cards);
         if (nextDeckCard is not null)
         {
-            return [nextDeckCard];
+            return CheckSelectCountAndIncrement([nextDeckCard], cards, min, max);
         }
 
         var nextFieldCard = SelectNextMaterialOnField(Card, cards);
         if (nextFieldCard is not null)
         {
-            return [nextFieldCard];
+            return CheckSelectCountAndIncrement([nextFieldCard], cards, min, max);
         }
 
         return Util.CheckSelectCount([], cards, min, max);
+
+        IList<ClientCard> CheckSelectCountAndIncrement(IList<ClientCard> _selected, IList<ClientCard> selectableCards, int min, int max)
+        {
+            var selectedCards = Util.CheckSelectCount(_selected, selectableCards, min, max);
+
+            foreach (var card in selectedCards)
+            {
+                if (card.IsMonster() && (card.IsSpell() || card.IsTrap()))
+                {
+                    runeMaterialCount.bothCount++;
+                }
+                else if (card.IsMonster())
+                {
+                    runeMaterialCount.monsterCount++;
+                }
+                else
+                {
+                    runeMaterialCount.spellCount++;
+                }
+
+                if (card.HasSetcode(CatenicorumSetCode))
+                {
+                    runeMaterialCatenicorumCount++;
+                }
+            }
+
+            return selectedCards;
+        }
+
+        bool RuneConditionFulfilled(int monsterMinimum, int spellMinimum)
+        {
+            return (runeMaterialCount.monsterCount + runeMaterialCount.bothCount) >= monsterMinimum &&
+                (runeMaterialCount.spellCount + runeMaterialCount.bothCount) >= spellMinimum &&
+                (runeMaterialCount.monsterCount + runeMaterialCount.spellCount + runeMaterialCount.bothCount) >= (monsterMinimum + spellMinimum);
+        }
     }
 
     /// <summary>
@@ -776,7 +816,10 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         var availableMaterial = cards.Where(card => card != null && card.Location is CardLocation.Onfield && card.IsFaceup());
         var priorityMaterial = availableMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
 
-        // Choose a preferred one.
+        // Choose a card that provides us with extra material to use.
+        nextMaterial ??= PreferredExtraMaterialTrigger(cards);
+
+        // Choose one that hasn't used its effect yet.
         nextMaterial ??= PreferredMaterialOrder(priorityMaterial);
 
         // If nothing is preferred, just choose in the same order.
@@ -784,31 +827,62 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         return nextMaterial;
 
+        ClientCard PreferredExtraMaterialTrigger(IEnumerable<ClientCard> clientCards)
+        {
+            // Always choose Chains first, if it's equipped to an opponent's monster.
+            ClientCard nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains) && card.Controller == 0 && card.EquipTarget?.Controller == 1);
+
+            // Choose Shadow and Summoner next, to prepare Spell/Traps for use from the Deck.
+            nextMaterial ??= !shadowExtraMaterialUsed ? clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow)) : null;
+            if (nextMaterial is not null)
+            {
+                // As there's no way to set this to true, at any other point. We will find behaviour where it hasn't used its extra material but still believes it has.
+                shadowExtraMaterialUsed = true;
+            }
+
+            nextMaterial ??= !summonerExtraMaterialUsed ? clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner)) : null;
+            if (nextMaterial is not null)
+            {
+                // As there's no way to set this to true, at any other point. We will find behaviour where it hasn't used its extra material but still believes it has.
+                summonerExtraMaterialUsed = true;
+            }
+
+            // Portal should be used for extra material
+            nextMaterial ??= !portalExtraMaterialUsed ? clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal)) : null;
+            if (nextMaterial is not null)
+            {
+                // As there's no way to set this to true, at any other point. We will find behaviour where it hasn't used its extra material but still believes it has.
+                portalExtraMaterialUsed = true;
+            }
+
+            return nextMaterial;
+        }
+
         ClientCard PreferredMaterialOrder(IEnumerable<ClientCard> clientCards)
         {
             // Prioritise Shadow and then Summoner as materials
-            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
+            var nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
 
             // Portal is preferred if no preferred monsters are available
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
 
             // Binding is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
 
             // Circle is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
 
             // Chains is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
 
             // Prioritise Serpent next
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
 
             // Manipulator after Serpent
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
 
-            return sanctumMaterial;
+            return nextMaterial;
         }
     }
 
@@ -935,185 +1009,6 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AI.SelectCard([..priorityRunes, ..catenicorumRunes, ..Bot.Deck]);
 
         return false;
-    }
-
-    private (ClientCard chainsCard, ClientCard monsterCard)? SelectChainsMaterial()
-    {
-        if (!Bot.HasInSpellZone(CardId.Chains, true, true))
-        {
-            return null;
-        }
-
-        var chainsCard = Bot.SpellZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Chains) && card.IsFaceup() && !card.IsDisabled());
-        return (chainsCard, chainsCard.EquipTarget);
-    }
-
-    private (ClientCard portalCard, ClientCard monsterCard)? SelectPortalExtraMaterial()
-    {
-        if (portalExtraMaterialUsed || !Bot.HasInSpellZone(CardId.Portal, true, true))
-        {
-            return null;
-        }
-
-        var portalCard = Bot.SpellZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Portal) && card.IsFaceup() && !card.IsDisabled());
-
-        ClientCard portalMaterial = null;
-        var availableDeckMaterial = Bot.Deck.Where(card => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
-        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
-
-        // Choose a preferred one.
-        portalMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
-
-        // If nothing is preferred, just choose in the same order.
-        portalMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
-
-        return (portalCard, portalMaterial);
-
-        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
-        {
-            // Prioritise Shadow and then Summoner as materials
-            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
-
-            // Prioritise Serpent next
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
-
-            // Manipulator after Serpent
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
-
-            return sanctumMaterial;
-        }
-    }
-
-    private ClientCard SelectSanctumExtraMaterial()
-    {
-        if (sanctumExtraMaterialUsed || !Bot.HasInSpellZone(CardId.Sanctum, true, true))
-        {
-            return null;
-        }
-
-        ClientCard sanctumMaterial = null;
-        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode));
-        var preferredDeckMaterial = availableDeckMaterial.Where(card => !card.IsOriginalCode(CardId.Sanctum) && ShouldUseCatenicorumAsMaterialFromDeck(card));
-
-        // If the bot has no other Rune monsters in hand, portal is the first one to be retrieved always so that the Bot can continue extending.
-        if (!portalRuneFromDeckIsUsed && !portalExtraMaterialUsed && !Bot.Hand.Any(card => (card.Type & RuneMonsterType) > 0 && !card.Equals(Card)))
-        {
-            sanctumMaterial = availableDeckMaterial.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
-        }
-
-        // Choose a preferred one.
-        sanctumMaterial ??= PreferredSanctumExtraMaterialOrder(preferredDeckMaterial);
-
-        // If nothing is preferred, just choose in the same order.
-        sanctumMaterial ??= PreferredSanctumExtraMaterialOrder(availableDeckMaterial);
-
-        return sanctumMaterial;
-
-        ClientCard PreferredSanctumExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
-        {
-            // Prioritise Shadow and then Summoner as materials
-            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
-
-            // Prioritise Serpent next
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
-
-            // Manipulator after Serpent
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
-
-            // Portal is preferred if no preferred monsters are available
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
-
-            // Binding is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
-
-            // Circle is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
-
-            // Chains is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
-
-            return sanctumMaterial;
-        }
-    }
-
-    private (ClientCard shadowCard, ClientCard spellTrapCard)? SelectShadowExtraMaterial()
-    {
-        if (shadowExtraMaterialUsed || !Bot.HasInMonstersZone(CardId.Shadow, true, true))
-        {
-            return null;
-        }
-
-        var portalCard = Bot.MonsterZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Shadow) && card.IsFaceup() && !card.IsDisabled());
-
-        ClientCard sanctumMaterial = null;
-        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
-        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
-
-        // Choose a preferred one.
-        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
-
-        // If nothing is preferred, just choose in the same order.
-        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
-
-        return (portalCard, sanctumMaterial);
-
-        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
-        {
-            // Portal is preferred if no preferred monsters are available
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
-
-            // Binding is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
-
-            // Circle is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
-
-            // Chains is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
-
-            return sanctumMaterial;
-        }
-    }
-
-    private (ClientCard summonerCard, ClientCard spellTrapCard)? SelectSummonerExtraMaterial()
-    {
-        if (summonerExtraMaterialUsed || !Bot.HasInMonstersZone(CardId.Summoner, true, true))
-        {
-            return null;
-        }
-
-        var portalCard = Bot.MonsterZone.FirstOrDefault(card => card != null && card.IsOriginalCode(CardId.Summoner) && card.IsFaceup() && !card.IsDisabled());
-
-        ClientCard sanctumMaterial = null;
-        var availableDeckMaterial = Bot.Deck.Where(card => card.HasSetcode(CatenicorumSetCode) && card.IsMonster());
-        var preferredDeckMaterial = availableDeckMaterial.Where(card => ShouldUseCatenicorumAsMaterialFromDeck(card));
-
-        // Choose a preferred one.
-        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(preferredDeckMaterial);
-
-        // If nothing is preferred, just choose in the same order.
-        sanctumMaterial ??= PreferredPortalExtraMaterialOrder(availableDeckMaterial);
-
-        return (portalCard, sanctumMaterial);
-
-        ClientCard PreferredPortalExtraMaterialOrder(IEnumerable<ClientCard> clientCards)
-        {
-            // Portal is preferred if no preferred monsters are available
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
-
-            // Binding is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
-
-            // Circle is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
-
-            // Chains is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
-
-            return sanctumMaterial;
-        }
     }
 
     private bool ShouldUseCatenicorumAsMaterialFromDeck(ClientCard clientCard)
