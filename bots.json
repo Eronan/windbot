@@ -198,6 +198,12 @@
         "masterRules": [ 4, 5 ]
     },
     {
+        "name": "Ryzeal",
+        "deck": "Ryzeal",
+        "difficulty": 3,
+        "masterRules": [ 4, 5 ]
+    },
+    {
         "name": "Swordsoul",
         "deck": "Swordsoul",
         "difficulty": 3,
