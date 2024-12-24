@@ -144,17 +144,17 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.PotOfProsperity, AvoidImpermanenceActivate(PotofProsperityActivate));
         AddExecutor(ExecutorType.Activate, CardId.Circle, CatenicorumCircleEffect);
         AddExecutor(ExecutorType.Activate, CardId.RunedRecovery, AvoidImpermanenceActivate(RunedRecoveryEffectActivate));
+        AddExecutor(ExecutorType.Activate, CardId.Sanctum, () => !Bot.HasInSpellZone(CardId.Sanctum, true, true));
+        AddExecutor(ExecutorType.Activate, CardId.Portal, AvoidImpermanenceActivate(() => true));
 
         // Extenders
-        AddExecutor(ExecutorType.Activate, CardId.AussaEarthCharmerImmovable);
-        AddExecutor(ExecutorType.Activate, CardId.EriaWaterCharmerGentle);
-        AddExecutor(ExecutorType.Activate, CardId.BorrelswordDragon, BorrelswordEffect);
         AddExecutor(ExecutorType.Activate, CardId.Summoner, CatenicorumSummonerEffect);
         AddExecutor(ExecutorType.Activate, CardId.Shadow);
         AddExecutor(ExecutorType.Activate, CardId.Binding, CatenicorumBindingEffect);
-        AddExecutor(ExecutorType.Activate, CardId.Portal, AvoidImpermanenceActivate(() => true));
         AddExecutor(ExecutorType.Activate, CardId.Chains, CatenicorumChainsActivate);
-        AddExecutor(ExecutorType.Activate, CardId.Sanctum);
+        AddExecutor(ExecutorType.Activate, CardId.AussaEarthCharmerImmovable);
+        AddExecutor(ExecutorType.Activate, CardId.EriaWaterCharmerGentle);
+        AddExecutor(ExecutorType.Activate, CardId.BorrelswordDragon, BorrelswordEffect);
 
         // Other effects, to always activate
         AddExecutor(ExecutorType.Activate, CardId.GaiaBlazeForceOfTheSun);
@@ -1087,7 +1087,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             case CardId.Binding:
                 return !Bot.HasInHandOrInSpellZone(CardId.Binding);
             case CardId.Chains:
-                return true;
+                return Enemy.GetMonsterCount() > 0;
             default:
                 return false;
         }
