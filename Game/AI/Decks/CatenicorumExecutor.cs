@@ -942,7 +942,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         ClientCard PreferredExtraMaterialTrigger(IEnumerable<ClientCard> clientCards)
         {
             // Always choose Chains first, if it's equipped to an opponent's monster.
-            ClientCard nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains) && card.Controller == 0 && card.EquipTarget?.Controller == 1);
+            ClientCard nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
 
             // Choose Shadow and Summoner next, to prepare Spell/Traps for use from the Deck.
             nextMaterial ??= !shadowExtraMaterialUsed ? clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow)) : null;
