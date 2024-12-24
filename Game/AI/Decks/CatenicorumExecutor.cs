@@ -239,6 +239,27 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             case _CardId.InfiniteImpermanence:
                 ImpermanenceZonesThisTurn.Add(4 - card.Sequence);
                 break;
+            case CardId.Shadow:
+                CatenicorumUsedAsMaterialFlags[CardId.Shadow] = true;
+                break;
+            case CardId.Summoner:
+                CatenicorumUsedAsMaterialFlags[CardId.Summoner] = true;
+                break;
+            case CardId.Portal:
+                CatenicorumUsedAsMaterialFlags[CardId.Portal] |= card.Location is CardLocation.Grave or CardLocation.Removed;
+                break;
+            case CardId.Sanctum:
+                CatenicorumUsedAsMaterialFlags[CardId.Sanctum] |= card.Location is CardLocation.Grave or CardLocation.Removed;
+                break;
+            case CardId.Chains:
+                CatenicorumUsedAsMaterialFlags[CardId.Chains] |= card.Location is CardLocation.Grave or CardLocation.Removed;
+                break;
+            case CardId.Binding:
+                CatenicorumUsedAsMaterialFlags[CardId.Binding] |= card.Location is CardLocation.Grave or CardLocation.Removed;
+                break;
+            case CardId.Circle:
+                CatenicorumUsedAsMaterialFlags[CardId.Circle] |= card.Location is CardLocation.Grave or CardLocation.Removed;
+                break;
         }
 
         base.OnChainSolved(chainIndex);
@@ -305,12 +326,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
     {
         // Rune Summon Summon
-        if (hint == RuneMaterialHint)
-        {
-            return OnSelectRuneMaterial(cards, min, max, hint, cancelable);
-        }
-
-        return base.OnSelectCard(cards, min, max, hint, cancelable);
+        return hint == RuneMaterialHint
+            ? OnSelectRuneMaterial(cards, min, max, hint, cancelable)
+            : base.OnSelectCard(cards, min, max, hint, cancelable);
     }
 
     public IList<ClientCard> OnSelectRuneMaterial(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
@@ -347,13 +365,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         var nextFieldCard = SelectNextMaterialOnField(Card, cards);
-        if (nextFieldCard is not null)
-        {
-            return CheckSelectCountAndIncrement([nextFieldCard], cards, min, max);
-        }
-
-        return Util.CheckSelectCount([], cards, min, max);
-
+        return nextFieldCard is not null
+            ? CheckSelectCountAndIncrement([nextFieldCard], cards, min, max)
+            : Util.CheckSelectCount([], cards, min, max);
         IList<ClientCard> CheckSelectCountAndIncrement(IList<ClientCard> _selected, IList<ClientCard> selectableCards, int min, int max)
         {
             var selectedCards = Util.CheckSelectCount(_selected, selectableCards, min, max);
@@ -550,6 +564,12 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         if (shouldSummonCard is not null)
         {
             AI.SelectCard(shouldSummonCard);
+
+            if (onlyCardOnField)
+            {
+                var preferredMat = GetPreferredDeckMaterials();
+                AI.SelectNextCard(preferredMat);
+            }
             return opponentsTurn || onlyCardOnField || Duel.LastChainPlayer == 1;
         }
 
@@ -565,6 +585,28 @@ public sealed class CatenicorumExecutor : DefaultExecutor
                 _ => false
             };
         }
+
+        IList<int> GetPreferredDeckMaterials()
+        {
+            IList<int> preferredMaterial = [];
+
+            AddToPreferredMaterial(preferredMaterial, CardId.Shadow, code => !Bot.HasInHand(code));
+            AddToPreferredMaterial(preferredMaterial, CardId.Summoner, code => !Bot.HasInHand(code));
+            AddToPreferredMaterial(preferredMaterial, CardId.Portal, code => !Bot.HasInHand(code));
+            AddToPreferredMaterial(preferredMaterial, CardId.Sanctum, code => !Bot.HasInHand(code));
+            AddToPreferredMaterial(preferredMaterial, CardId.Binding);
+            AddToPreferredMaterial(preferredMaterial, CardId.Chains, code => Enemy.GetMonsterCount() > 0);
+
+            return preferredMaterial;
+        }
+
+        void AddToPreferredMaterial(IList<int> list, int code, Func<int, bool> conditionFunc = null)
+        {
+            if (!ShouldUseCatenicorumAsMaterialFromDeck(code) && (conditionFunc is null || conditionFunc(code)))
+            {
+                list.Add(code);
+            }
+        }
     }
 
     private bool CatenicorumEtherealBeastRuneSummon(ClientCard card = null)
@@ -572,19 +614,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         card ??= Card;
         // If it is already in the monster zone, Manipulator and Serpent must also already on the field.
         var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.EtherealBeast, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        if (!hasNoSerpentOrAllRunesExist)
-        {
-            return false;
-        }
-
-        if (card.Location is not CardLocation.Deck)
-        {
-            return true;
-        }
-
-        // If it is already in hand, skip summoning this monster from the deck.
-        portalRuneFromDeckIsUsed = true;
-        return !Bot.HasInHand(CardId.Serpent);
+        return hasNoSerpentOrAllRunesExist;
     }
 
     private bool CatenicorumManipulatorEffect()
@@ -627,19 +657,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         card ??= Card;
         // If it is already in the monster zone, Ethereal Beast and Serpent must also already on the field.
         var hasNoManipulatorOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Manipulator, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        if (!hasNoManipulatorOrAllRunesExist)
-        {
-            return false;
-        }
-
-        if (card.Location is not CardLocation.Deck)
-        {
-            return true;
-        }
-
-        // If it is already in hand, skip summoning this monster from the deck.
-        portalRuneFromDeckIsUsed = true;
-        return !Bot.HasInHand(CardId.Serpent);
+        return hasNoManipulatorOrAllRunesExist;
     }
 
     private bool CatenicorumSerpentEffect()
@@ -683,19 +701,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         card ??= Card;
         // If it is already in the monster zone, Ethereal Beast and Manipulator must also already on the field.
         var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Serpent, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        if (!hasNoSerpentOrAllRunesExist)
-        {
-            return false;
-        }
-
-        if (card.Location is not CardLocation.Deck)
-        {
-            return true;
-        }
-
-        // If it is already in hand, skip summoning this monster.
-        portalRuneFromDeckIsUsed = true;
-        return !Bot.HasInHand(CardId.Serpent);
+        return hasNoSerpentOrAllRunesExist;
     }
 
     private bool CatenicorumSummonerEffect()
@@ -729,6 +735,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         return () =>
         {
+            if (!Enemy.Graveyard.Any(card => card.HasAttribute(cardAttribute)))
+            {
+                return false;
+            }
+
             IList<ClientCard> material_list = [];
 
             // Get materials that the bot is allowed to use for the Charmer.
@@ -872,7 +883,28 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         // If a card is in the deck, we can't identify the type of card.
         // So we just summon it from the deck regardless and assume it's one of the Catenicorum cards.
-        return Card.Location is CardLocation.Deck;
+        if (!Bot.HasInSpellZone(CardId.Portal, true, true) || Card.Location is not CardLocation.Deck)
+        {
+            return false;
+        }
+
+        IList<int> priorityList = [];
+        AddToPriorityList(CardId.Manipulator, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.Serpent, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.EtherealBeast, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.Manipulator);
+        AddToPriorityList(CardId.Serpent);
+
+        AI.SelectCard(priorityList);
+        return true;
+
+        void AddToPriorityList(int cardId, Func<int, bool> conditionFunc = null)
+        {
+            if (conditionFunc is null || conditionFunc(cardId))
+            {
+                priorityList.Add(cardId);
+            }
+        }
     }
 
     private ClientCard SelectNextMaterialOnField(ClientCard summonCard, IEnumerable<ClientCard> cards)
@@ -955,7 +987,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         ClientCard nextMaterial = null;
         var availableDeckMaterial = cards.Where(card => card != null && card.Location is CardLocation.Deck);
-        var preferredDeckMaterial = availableDeckMaterial.Where(card => !card.IsOriginalCode(CardId.Sanctum) && ShouldUseCatenicorumAsMaterialFromDeck(card));
+        var preferredDeckMaterial = availableDeckMaterial.Where(card => !card.IsOriginalCode(CardId.Sanctum) && ShouldUseCatenicorumAsMaterialFromDeck(card.GetOriginCode()));
 
         // If the bot has no other Rune monsters in hand, portal is the first one to be retrieved always so that the Bot can continue extending.
         if (!portalRuneFromDeckIsUsed && !portalExtraMaterialUsed && !Bot.Hand.Any(card => (card.Type & RuneMonsterType) > 0 && !card.Equals(Card)))
@@ -1087,9 +1119,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return false;
     }
 
-    private bool ShouldUseCatenicorumAsMaterialFromDeck(ClientCard clientCard)
+    private bool ShouldUseCatenicorumAsMaterialFromDeck(int code)
     {
-        var code = clientCard.GetOriginCode();
         if (HasUsedCatenicorumAsMaterialEffect(code))
         {
             return false;
