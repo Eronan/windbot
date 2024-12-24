@@ -612,8 +612,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         card ??= Card;
         // If it is already in the monster zone, Manipulator and Serpent must also already on the field.
-        var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.EtherealBeast, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        return hasNoSerpentOrAllRunesExist;
+        return !Bot.HasInMonstersZone(CardId.EtherealBeast, true, false, true);
     }
 
     private bool CatenicorumManipulatorEffect()
@@ -925,7 +924,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     private ClientCard SelectNextMaterialOnField(ClientCard summonCard, IEnumerable<ClientCard> cards)
     {
         ClientCard nextMaterial = null;
-        var availableMaterial = cards.Where(card => card != null && card.Location is CardLocation.Onfield && card.IsFaceup());
+        var availableMaterial = cards.Where(card => card != null && card.Location is CardLocation.Onfield && card.IsFaceup() && !AvoidAllMaterials.Contains(card.GetOriginCode()));
         var priorityMaterial = availableMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
 
         // Choose a card that provides us with extra material to use.
@@ -934,9 +933,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         // Choose one that hasn't used its effect yet.
         nextMaterial ??= PreferredMaterialOrder(priorityMaterial);
 
-        // If nothing is preferred, just choose in the same order.
-        nextMaterial ??= PreferredMaterialOrder(availableMaterial);
-
+        // If nothing is preferred, just let the AI choose on its own.
         return nextMaterial;
 
         ClientCard PreferredExtraMaterialTrigger(IEnumerable<ClientCard> clientCards)
@@ -977,16 +974,16 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
 
             // Portal is preferred if no preferred monsters are available
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
 
             // Binding is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
 
             // Circle is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
 
             // Chains is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
 
             // Prioritise Serpent next
             nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
@@ -1031,19 +1028,19 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
 
             // Sanctum is preferred if no preferred monsters are available
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Sanctum));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Sanctum));
 
             // Portal is preferred if no preferred monsters are available
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
 
             // Binding is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
 
             // Circle is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
 
             // Chains is preferred next
-            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
 
             return nextMaterial;
         }
