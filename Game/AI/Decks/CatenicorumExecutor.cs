@@ -3,7 +3,6 @@ namespace WindBot.Game.AI.Decks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using WindBot.Game;
 using YGOSharp.OCGWrapper.Enums;
 
