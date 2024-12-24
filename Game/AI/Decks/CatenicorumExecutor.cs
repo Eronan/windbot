@@ -3,6 +3,7 @@ namespace WindBot.Game.AI.Decks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
 using WindBot.Game;
 using YGOSharp.OCGWrapper.Enums;
 
@@ -166,6 +167,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Summon, CardId.Shadow);
 
         // Priority Special Summons
+        AddExecutor(ExecutorType.SpSummon, IsInDeck); // Cards in the deck don't have a code, we need to just instantly summon them.
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
         AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, () => CatenicorumManipulatorRuneSummon());
         AddExecutor(ExecutorType.SpSummon, CardId.Serpent, () => CatenicorumSerpentRuneSummon());
@@ -544,9 +546,14 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         var opponentsTurn = Duel.Player == 1;
 
         // To improve after creating summon proc functions.
-        var shouldSummonCard = Bot.Hand.FirstOrDefault(card => ShouldRuneSummon(card));
+        var shouldSummonCard = Bot.Hand.FirstOrDefault(ShouldRuneSummon);
+        if (shouldSummonCard is not null)
+        {
+            AI.SelectCard(shouldSummonCard);
+            return opponentsTurn || onlyCardOnField || Duel.LastChainPlayer == 1;
+        }
 
-        return shouldSummonCard is not null && (opponentsTurn || onlyCardOnField);
+        return false;
 
         bool ShouldRuneSummon(ClientCard card)
         {
@@ -861,6 +868,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return minElement;
     }
 
+    private bool IsInDeck()
+    {
+        // If a card is in the deck, we can't identify the type of card.
+        // So we just summon it from the deck regardless and assume it's one of the Catenicorum cards.
+        return Card.Location is CardLocation.Deck;
+    }
+
     private ClientCard SelectNextMaterialOnField(ClientCard summonCard, IEnumerable<ClientCard> cards)
     {
         ClientCard nextMaterial = null;
@@ -868,7 +882,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         var priorityMaterial = availableMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
 
         // Choose a card that provides us with extra material to use.
-        nextMaterial ??= PreferredExtraMaterialTrigger(cards);
+        nextMaterial ??= PreferredExtraMaterialTrigger(availableMaterial);
 
         // Choose one that hasn't used its effect yet.
         nextMaterial ??= PreferredMaterialOrder(priorityMaterial);
