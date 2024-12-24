@@ -559,11 +559,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
-            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
         // If it is already in hand, skip summoning this monster from the deck.
+        portalRuneFromDeckIsUsed = true;
         return !Bot.HasInHand(CardId.Serpent);
     }
 
@@ -613,11 +613,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
-            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
         // If it is already in hand, skip summoning this monster from the deck.
+        portalRuneFromDeckIsUsed = true;
         return !Bot.HasInHand(CardId.Serpent);
     }
 
@@ -668,11 +668,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
-            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
         // If it is already in hand, skip summoning this monster.
+        portalRuneFromDeckIsUsed = true;
         return !Bot.HasInHand(CardId.Serpent);
     }
 
