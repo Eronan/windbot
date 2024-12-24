@@ -717,7 +717,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddToSummonerList(CardId.Shadow, Bot.HasInHandOrHasInMonstersZone);
         cardsId.Add(CardId.Summoner);
         AddToSummonerList(CardId.Chains, cardId => Enemy.MonsterZone.Any(card => card != null && card.IsFaceup()));
-        AI.SelectNextCard(cardsId);
+        AI.SelectCard(cardsId);
         return true;
 
         void AddToSummonerList(int cardId, Func<int, bool> condition = null)
