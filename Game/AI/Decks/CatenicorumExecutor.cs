@@ -898,11 +898,16 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         IList<int> priorityList = [];
-        AddToPriorityList(CardId.Manipulator, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        AddToPriorityList(CardId.Serpent, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        AddToPriorityList(CardId.EtherealBeast, cardId => Bot.HasInMonstersZone(cardId, true, false, true));
-        AddToPriorityList(CardId.Manipulator);
-        AddToPriorityList(CardId.Serpent);
+        AddToPriorityList(CardId.Manipulator, cardId => !Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.Serpent, cardId => !Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.EtherealBeast, cardId => !Bot.HasInMonstersZone(cardId, true, false, true));
+        AddToPriorityList(CardId.Manipulator, (cardId) => Bot.HasInMonstersZone([CardId.Summoner, CardId.Shadow], true, false, true));
+        AddToPriorityList(CardId.Serpent, (cardId) => Bot.HasInMonstersZone([CardId.Summoner, CardId.Shadow], true, false, true));
+
+        if (priorityList.Count == 0)
+        {
+            return false;
+        }
 
         AI.SelectCard(priorityList);
         return true;
