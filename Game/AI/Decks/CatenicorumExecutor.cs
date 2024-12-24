@@ -43,6 +43,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     public const long RuneMonsterType = 0x80000000;
 
+    public const int RuneMaterialHint = 600;
+
     public const int CatenicorumSetCode = 0xfcf;
 
     private readonly List<int> CatenicorumPlaceFromGY = [
@@ -79,6 +81,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     private readonly List<int> UsedSpellTrapMaterial = [];
 
     private bool enemyActivateInfiniteImpermanenceFromHand = false;
+
+    // Attempted to cancel Ethereal Beast Rune Summon
+    private bool attemptedEtherealBeastCancel = false;
 
     // Portal Rune Summon from Deck
     private bool portalRuneFromDeckIsUsed = false;
@@ -134,7 +139,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         // Starters
         AddExecutor(ExecutorType.Activate, CardId.PotOfProsperity, AvoidImpermanenceActivate(PotofProsperityActivate));
         AddExecutor(ExecutorType.Activate, CardId.Circle, CatenicorumCircleEffect);
-        AddExecutor(ExecutorType.Activate, CardId.RunedRecovery, AvoidImpermanenceActivate(() => true));
+        AddExecutor(ExecutorType.Activate, CardId.RunedRecovery, AvoidImpermanenceActivate(RunedRecoveryEffectActivate));
 
         // Extenders
         AddExecutor(ExecutorType.Activate, CardId.AussaEarthCharmerImmovable);
@@ -286,6 +291,47 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         base.OnNewPhase();
     }
 
+    public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
+    {
+        // Rune Summon Summon
+        if (hint == RuneMaterialHint)
+        {
+            return OnSelectRuneMaterial(cards, min, max, hint, cancelable);
+        }
+
+        return base.OnSelectCard(cards, min, max, hint, cancelable);
+    }
+
+    public IList<ClientCard> OnSelectRuneMaterial(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
+    {
+        Logger.WriteLine($"Selecting materials for Rune Monster {Card.Name}.");
+
+        // Prefer selecting opponent's cards.
+        var selectedMonsterMaterials = Util.SelectPreferredCards(Enemy.MonsterZone.OrderBy(card => card?.GetDefensePower() ?? 0).ToList(), cards, min, max);
+        var selectedSpellMaterials = Util.SelectPreferredCards(Enemy.SpellZone.OrderBy(card => card?.IsFloodgate() == true ? 99 : 0).ToList(), cards, min, max);
+
+        // If we don't have details as to the Rune monster, just summon it with priority to the opponent's cards.
+        if (!CatenicorumRunes.Contains(Card.GetOriginCode()))
+        {
+            var result = Util.SelectPreferredCards([.. selectedMonsterMaterials, ..selectedSpellMaterials], cards, min, max);
+            return Util.CheckSelectCount(result, cards, min, max);
+        }
+
+        // Refresh the Rune Selection list, until we've selected all of the opponent's cards.
+        if (selectedMonsterMaterials.Any() || selectedSpellMaterials.Any())
+        {
+            return [..selectedMonsterMaterials, ..selectedSpellMaterials];
+        }
+
+        // If Ethereal Beast is being summoned, and its conditions have been fulilled cancel the summon.
+        if (Card.IsOriginalCode(CardId.EtherealBeast))
+        {
+            return Util.CheckSelectCount(cards, cards, min, max);
+        }
+
+        return Util.CheckSelectCount([.. selectedMonsterMaterials, .. selectedSpellMaterials], cards, min, max);
+    }
+
     /// <summary>
     /// go first
     /// </summary>
@@ -426,178 +472,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is CardLocation.Deck)
+        if (Card.Location is not CardLocation.Deck)
         {
-            // If it is already in hand, skip summoning this monster from the deck.
-            return !Bot.HasInHand(CardId.Serpent) && SelectMaterials(Card);
+            return true;
         }
 
-        return SelectMaterials(Card);
-
-        bool SelectMaterials(ClientCard summonCard)
-        {
-            // Get all non-Token monsters
-            var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
-            var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode())).ToList();
-
-            // Get all Catenicorum Spell/Traps
-            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
-            var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter).ToList();
-
-            // Prioritise selecting the opponent's cards as materials, selecting all available ones.
-            IList<ClientCard> opponentMaterials = [.. Enemy.MonsterZone.Where(nonTokenFilter), .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
-            List<ClientCard> guaranteedMaterials = [];
-
-            // We still want to prioritise Chain's selection over other cards.
-            var chainMaterials = SelectChainsMaterial();
-            if (chainMaterials.HasValue)
-            {
-                guaranteedMaterials.Add(chainMaterials.Value.chainsCard);
-                guaranteedMaterials.Add(chainMaterials.Value.monsterCard);
-            }
-
-            // We still want to prioritise Sanctum's extra material
-            var sanctumMaterial = SelectSanctumExtraMaterial();
-            if (sanctumMaterial is not null)
-            {
-                guaranteedMaterials.Add(sanctumMaterial);
-            }
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            // Other extra materials
-            var summonerMaterial = SelectSummonerExtraMaterial();
-            if (summonerMaterial.HasValue)
-            {
-                guaranteedMaterials.Add(summonerMaterial.Value.summonerCard);
-                guaranteedMaterials.Add(summonerMaterial.Value.spellTrapCard);
-            }
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            var shadowMaterial = SelectShadowExtraMaterial();
-            if (shadowMaterial.HasValue)
-            {
-                guaranteedMaterials.Add(shadowMaterial.Value.shadowCard);
-                guaranteedMaterials.Add(shadowMaterial.Value.spellTrapCard);
-            }
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            var portalMaterial = SelectPortalExtraMaterial();
-            if (portalMaterial.HasValue)
-            {
-                guaranteedMaterials.Add(portalMaterial.Value.portalCard);
-                guaranteedMaterials.Add(portalMaterial.Value.monsterCard);
-            }
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            var missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
-            guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
-            guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
-            guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
-            guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            guaranteedMaterials.AddRange(availableBotMonsters);
-            guaranteedMaterials.AddRange(availableSpellMaterial);
-
-            // If we've got enough, prematurely end it.
-            if (FulfilledConditions(guaranteedMaterials))
-            {
-                AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
-                return true;
-            }
-
-            // If there's not enough, it's assumed that Crystal Wing Synchro Dragon may be part of the field. If so, we should avoid using it as material.
-            return false;
-        }
-
-        bool FulfilledConditions(IEnumerable<ClientCard> materials)
-        {
-            var monsterCount = 0;
-            var spellTrapCount = 0;
-            var catenicorumCount = 0;
-
-            foreach (var card in materials)
-            {
-                if (card.IsMonster())
-                {
-                    monsterCount++;
-                }
-
-                if (card.IsSpell() || card.IsTrap())
-                {
-                    spellTrapCount++;
-                }
-
-                if (card.HasSetcode(CatenicorumSetCode))
-                {
-                    catenicorumCount++;
-                }
-
-                if (monsterCount >= 2 && spellTrapCount >= 2 && catenicorumCount >= 2)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
+        // If it is already in hand, skip summoning this monster from the deck.
+        return !Bot.HasInHand(CardId.Serpent);
     }
 
     private bool CatenicorumManipulatorEffect()
@@ -644,110 +525,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is CardLocation.Deck)
+        if (Card.Location is not CardLocation.Deck)
         {
-            // If it is already in hand, skip summoning this monster from the deck.
-            return !Bot.HasInHand(CardId.Serpent) && SelectMaterials(Card);
-        }
-
-        return SelectMaterials(Card);
-
-        bool SelectMaterials(ClientCard summonCard)
-        {
-            var availableMonsterMaterial = Bot.MonsterZone.Where(card => card != null && AvoidAllMaterials.Contains(card.GetOriginCode()));
-
-            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
-            var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
-
-            ClientCard monsterMaterial = null;
-            ClientCard spellMaterial = null;
-
-            // Chains fulfills the full material for Manipulator always.
-            var chainMaterials = SelectChainsMaterial();
-            if (chainMaterials.HasValue)
-            {
-                AI.SelectMaterials([chainMaterials.Value.chainsCard, chainMaterials.Value.monsterCard]);
-                return true;
-            }
-
-            // Using the opponent's cards is a priority over using own cards.
-            IList<ClientCard> opponentCards = [.. Enemy.MonsterZone, .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
-
-            // Get Sanctum extra material card
-            var sanctumMaterial = SelectSanctumExtraMaterial();
-            if (sanctumMaterial is not null)
-            {
-                monsterMaterial ??= sanctumMaterial.IsMonster() ? sanctumMaterial : null;
-                spellMaterial ??= sanctumMaterial.IsSpell() || sanctumMaterial.IsTrap() ? sanctumMaterial : null;
-
-                var sanctumMaterials = new List<ClientCard>();
-                sanctumMaterials.AddRange(opponentCards);
-
-                monsterMaterial ??= availableMonsterMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-                monsterMaterial ??= availableMonsterMaterial.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
-                monsterMaterial ??= availableMonsterMaterial.FirstOrDefault();
-
-                if (monsterMaterial is not null)
-                {
-                    sanctumMaterials.Add(monsterMaterial);
-                }
-
-                spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-                spellMaterial ??= availableSpellMaterial.FirstOrDefault();
-
-                if (spellMaterial is not null)
-                {
-                    sanctumMaterials.Add(spellMaterial);
-                }
-
-
-                AI.SelectMaterials(sanctumMaterials);
-                return true;
-            }
-
-            // Other extra materials
-            var summonerMaterial = SelectSummonerExtraMaterial();
-            if (summonerMaterial.HasValue)
-            {
-                AI.SelectMaterials([summonerMaterial.Value.summonerCard, summonerMaterial.Value.spellTrapCard]);
-                return true;
-            }
-
-            var shadowMaterial = SelectShadowExtraMaterial();
-            if (shadowMaterial.HasValue)
-            {
-                AI.SelectMaterials([shadowMaterial.Value.shadowCard, shadowMaterial.Value.spellTrapCard]);
-                return true;
-            }
-
-            var portalMaterial = SelectPortalExtraMaterial();
-            if (portalMaterial.HasValue)
-            {
-                AI.SelectMaterials([portalMaterial.Value.portalCard, portalMaterial.Value.monsterCard]);
-                return true;
-            }
-
-            monsterMaterial ??= availableMonsterMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-            monsterMaterial ??= availableMonsterMaterial.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
-            monsterMaterial ??= availableMonsterMaterial.FirstOrDefault();
-
-            // If monster material is still unavailable, it's assumed it's because it's a material we don't want to use.
-            if (monsterMaterial is null)
-            {
-                return false;
-            }
-
-            spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-            spellMaterial ??= availableSpellMaterial.FirstOrDefault();
-
-            if (spellMaterial is null)
-            {
-                return false;
-            }
-
-            AI.SelectMaterials([..opponentCards, monsterMaterial, spellMaterial]);
             return true;
         }
+
+        // If it is already in hand, skip summoning this monster from the deck.
+        return !Bot.HasInHand(CardId.Serpent);
     }
 
     private bool CatenicorumSerpentEffect()
@@ -795,116 +579,13 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is CardLocation.Deck)
+        if (Card.Location is not CardLocation.Deck)
         {
-            // If it is already in hand, skip summoning this monster.
-            return !Bot.HasInHand(CardId.Serpent) && SelectMaterials(Card);
-        }
-
-        return SelectMaterials(Card);
-
-        bool SelectMaterials(ClientCard summonCard)
-        {
-            // Get all non-Token monsters
-            var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
-            var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode()));
-
-            // Get all Catenicorum Spell/Traps
-            var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
-            var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter);
-
-            ClientCard monsterMaterial = null;
-            ClientCard spellMaterial = null;
-
-            // Chains fulfills the full material for Manipulator always.
-            var chainMaterials = SelectChainsMaterial();
-            if (chainMaterials.HasValue)
-            {
-                AI.SelectMaterials([chainMaterials.Value.chainsCard, chainMaterials.Value.monsterCard]);
-                return true;
-            }
-
-            // Using the opponent's cards is a priority over using own cards.
-            IList<ClientCard> opponentCards = [.. Enemy.MonsterZone.Where(nonTokenFilter), .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
-
-            // Get Sanctum extra material card
-            var sanctumMaterial = SelectSanctumExtraMaterial();
-            if (sanctumMaterial is not null)
-            {
-                monsterMaterial ??= sanctumMaterial.IsMonster() ? sanctumMaterial : null;
-                spellMaterial ??= sanctumMaterial.IsSpell() || sanctumMaterial.IsTrap() ? sanctumMaterial : null;
-
-                var sanctumMaterials = new List<ClientCard>();
-                sanctumMaterials.AddRange(opponentCards);
-
-                monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-                monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
-                monsterMaterial ??= availableBotMonsters.FirstOrDefault();
-
-                if (monsterMaterial is not null)
-                {
-                    sanctumMaterials.Add(monsterMaterial);
-                }
-
-                spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-                spellMaterial ??= availableSpellMaterial.FirstOrDefault();
-
-                if (spellMaterial is not null)
-                {
-                    sanctumMaterials.Add(spellMaterial);
-                }
-
-
-                AI.SelectMaterials(sanctumMaterials);
-                return true;
-            }
-
-            // Other extra materials
-            var summonerMaterial = SelectSummonerExtraMaterial();
-            if (summonerMaterial.HasValue)
-            {
-                AI.SelectMaterials([summonerMaterial.Value.summonerCard, summonerMaterial.Value.spellTrapCard]);
-                return true;
-            }
-
-            var shadowMaterial = SelectShadowExtraMaterial();
-            if (shadowMaterial.HasValue)
-            {
-                AI.SelectMaterials([shadowMaterial.Value.shadowCard, shadowMaterial.Value.spellTrapCard]);
-                return true;
-            }
-
-            var portalMaterial = SelectPortalExtraMaterial();
-            if (portalMaterial.HasValue)
-            {
-                AI.SelectMaterials([portalMaterial.Value.portalCard, portalMaterial.Value.monsterCard]);
-                return true;
-            }
-
-            var materials = new List<ClientCard>();
-            materials.AddRange(opponentCards);
-
-            monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-            monsterMaterial ??= availableBotMonsters.FirstOrDefault(card => !card.HasSetcode(CatenicorumSetCode));
-            monsterMaterial ??= availableBotMonsters.FirstOrDefault();
-
-            // If monster material is still unavailable, it's assumed it's because it's a material we don't want to use.
-            if (monsterMaterial is null)
-            {
-                return false;
-            }
-
-            spellMaterial ??= availableSpellMaterial.FirstOrDefault(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode()));
-            spellMaterial ??= availableSpellMaterial.FirstOrDefault();
-
-            if (spellMaterial is null)
-            {
-                return false;
-            }
-
-            AI.SelectMaterials([.. opponentCards, monsterMaterial, spellMaterial]);
             return true;
         }
+
+        // If it is already in hand, skip summoning this monster.
+        return !Bot.HasInHand(CardId.Serpent);
     }
 
     private bool CatenicorumSummonerEffect()
@@ -919,7 +600,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddToSummonerList(CardId.Circle, cardId => Bot.IsFieldEmpty());
         AddToSummonerList(CardId.Shadow, Bot.HasInHandOrHasInMonstersZone);
         cardsId.Add(CardId.Summoner);
-        AddToSummonerList(CardId.Chains, cardId => Enemy.MonsterZone.Any(card => card.IsFaceup()));
+        AddToSummonerList(CardId.Chains, cardId => Enemy.MonsterZone.Any(card => card != null && card.IsFaceup()));
         AI.SelectNextCard(cardsId);
         return true;
 
@@ -1076,6 +757,335 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         return minElement;
     }
+
+    //private IList<ClientCard> SelectNextRuneMaterial(ClientCard summonCard, IEnumerable<ClientCard> cards)
+    //{
+    //    // Get all non-Token monsters
+    //    var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
+    //    var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode())).ToList();
+
+    //    // Get all Catenicorum Spell/Traps
+    //    var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+    //    var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter).ToList();
+
+    //    // Prioritise selecting the opponent's cards as materials, selecting all available ones.
+    //    IList<ClientCard> opponentMaterials = [.. Enemy.MonsterZone.Where(nonTokenFilter), .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
+    //    List<ClientCard> guaranteedMaterials = [];
+
+    //    // We still want to prioritise Chain's selection over other cards.
+    //    var chainMaterials = SelectChainsMaterial();
+    //    if (chainMaterials.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(chainMaterials.Value.chainsCard);
+    //        guaranteedMaterials.Add(chainMaterials.Value.monsterCard);
+    //    }
+
+    //    // We still want to prioritise Sanctum's extra material
+    //    var sanctumMaterial = SelectSanctumExtraMaterial();
+    //    if (sanctumMaterial is not null)
+    //    {
+    //        guaranteedMaterials.Add(sanctumMaterial);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    // Other extra materials
+    //    var summonerMaterial = SelectSummonerExtraMaterial();
+    //    if (summonerMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(summonerMaterial.Value.summonerCard);
+    //        guaranteedMaterials.Add(summonerMaterial.Value.spellTrapCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var shadowMaterial = SelectShadowExtraMaterial();
+    //    if (shadowMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(shadowMaterial.Value.shadowCard);
+    //        guaranteedMaterials.Add(shadowMaterial.Value.spellTrapCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var portalMaterial = SelectPortalExtraMaterial();
+    //    if (portalMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(portalMaterial.Value.portalCard);
+    //        guaranteedMaterials.Add(portalMaterial.Value.monsterCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    guaranteedMaterials.AddRange(availableBotMonsters);
+    //    guaranteedMaterials.AddRange(availableSpellMaterial);
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    // If there's not enough, it's assumed that Crystal Wing Synchro Dragon may be part of the field. If so, we should avoid using it as material.
+    //    return false;
+
+    //    bool FulfilledConditions(IEnumerable<ClientCard> materials)
+    //    {
+    //        var monsterCount = 0;
+    //        var spellTrapCount = 0;
+    //        var catenicorumCount = 0;
+
+    //        foreach (var card in materials)
+    //        {
+    //            if (card.IsMonster())
+    //            {
+    //                monsterCount++;
+    //            }
+
+    //            if (card.IsSpell() || card.IsTrap())
+    //            {
+    //                spellTrapCount++;
+    //            }
+
+    //            if (card.HasSetcode(CatenicorumSetCode))
+    //            {
+    //                catenicorumCount++;
+    //            }
+
+    //            if (monsterCount >= 2 && spellTrapCount >= 2 && catenicorumCount >= 2)
+    //            {
+    //                return true;
+    //            }
+    //        }
+
+    //        return false;
+    //    }
+    //}
+
+    //private ClientCard SelectNextRuneMaterialFromDeck(ClientCard summonCard, IEnumerable<ClientCard> cards)
+    //{
+    //    // Get all non-Token monsters
+    //    var nonTokenFilter = (ClientCard card) => card != null && (card.Type & (int)CardType.Token) == 0;
+    //    var availableBotMonsters = Bot.MonsterZone.Where(card => nonTokenFilter(card) && AvoidAllMaterials.Contains(card.GetOriginCode())).ToList();
+
+    //    // Get all Catenicorum Spell/Traps
+    //    var catenicorumSpellFilter = (ClientCard card) => card != null && card.HasSetcode(CatenicorumSetCode) && card.IsFaceup();
+    //    var availableSpellMaterial = Bot.SpellZone.Where(catenicorumSpellFilter).ToList();
+
+    //    // Prioritise selecting the opponent's cards as materials, selecting all available ones.
+    //    IList<ClientCard> opponentMaterials = [.. Enemy.MonsterZone.Where(nonTokenFilter), .. Enemy.SpellZone.Where(catenicorumSpellFilter)];
+    //    List<ClientCard> guaranteedMaterials = [];
+
+    //    // We still want to prioritise Chain's selection over other cards.
+    //    var chainMaterials = SelectChainsMaterial();
+    //    if (chainMaterials.HasValue && cards.Contains(chainMaterials.Value.monsterCard))
+    //    {
+    //        return chainMaterials.Value.monsterCard;
+    //    }
+
+    //    // We still want to prioritise Sanctum's extra material
+    //    var sanctumMaterial = SelectSanctumExtraMaterial();
+    //    if (sanctumMaterial is not null)
+    //    {
+    //        guaranteedMaterials.Add(sanctumMaterial);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    // Other extra materials
+    //    var summonerMaterial = SelectSummonerExtraMaterial();
+    //    if (summonerMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(summonerMaterial.Value.summonerCard);
+    //        guaranteedMaterials.Add(summonerMaterial.Value.spellTrapCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var shadowMaterial = SelectShadowExtraMaterial();
+    //    if (shadowMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(shadowMaterial.Value.shadowCard);
+    //        guaranteedMaterials.Add(shadowMaterial.Value.spellTrapCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var portalMaterial = SelectPortalExtraMaterial();
+    //    if (portalMaterial.HasValue)
+    //    {
+    //        guaranteedMaterials.Add(portalMaterial.Value.portalCard);
+    //        guaranteedMaterials.Add(portalMaterial.Value.monsterCard);
+    //    }
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    var missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !HasUsedCatenicorumAsMaterialEffect(card.GetOriginCode())).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableBotMonsters.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    missingMaterials = Math.Max(4 - guaranteedMaterials.Count, 2 - guaranteedMaterials.Count(card => card.HasSetcode(CatenicorumSetCode)));
+    //    guaranteedMaterials.AddRange(availableSpellMaterial.Where(card => !card.HasSetcode(CatenicorumSetCode)).Take(missingMaterials));
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    guaranteedMaterials.AddRange(availableBotMonsters);
+    //    guaranteedMaterials.AddRange(availableSpellMaterial);
+
+    //    // If we've got enough, prematurely end it.
+    //    if (FulfilledConditions(guaranteedMaterials))
+    //    {
+    //        AI.SelectMaterials([.. opponentMaterials, .. guaranteedMaterials]);
+    //        return true;
+    //    }
+
+    //    // If there's not enough, it's assumed that Crystal Wing Synchro Dragon may be part of the field. If so, we should avoid using it as material.
+    //    return false;
+
+    //    bool FulfilledConditions(IEnumerable<ClientCard> materials)
+    //    {
+    //        var monsterCount = 0;
+    //        var spellTrapCount = 0;
+    //        var catenicorumCount = 0;
+
+    //        foreach (var card in materials)
+    //        {
+    //            if (card.IsMonster())
+    //            {
+    //                monsterCount++;
+    //            }
+
+    //            if (card.IsSpell() || card.IsTrap())
+    //            {
+    //                spellTrapCount++;
+    //            }
+
+    //            if (card.HasSetcode(CatenicorumSetCode))
+    //            {
+    //                catenicorumCount++;
+    //            }
+
+    //            if (monsterCount >= 2 && spellTrapCount >= 2 && catenicorumCount >= 2)
+    //            {
+    //                return true;
+    //            }
+    //        }
+
+    //        return false;
+    //    }
+    //}
 
     private bool PotofProsperityActivate()
     {
@@ -1348,7 +1358,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             case CardId.Summoner:
                 return !Bot.HasInHand(code);
             case CardId.Manipulator:
-                return Enemy.MonsterZone.Any(card => card.IsFaceup() && !card.IsDisabled()) || Enemy.SpellZone.Any(card => card.IsFaceup() && !card.IsDisabled());
+                return Enemy.MonsterZone.Any(card => card != null && card.IsFaceup() && !card.IsDisabled()) || Enemy.SpellZone.Any(card => card != null && card.IsFaceup() && !card.IsDisabled());
             case CardId.Serpent:
                 return Bot.HasInGraveyard([CardId.Shadow, CardId.Summoner]);
             case CardId.EtherealBeast:
