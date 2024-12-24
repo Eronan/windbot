@@ -734,7 +734,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     {
         return () =>
         {
-            if (!Enemy.Graveyard.Any(card => card.HasAttribute(cardAttribute)))
+            if (!Enemy.Graveyard.Any(card => card.HasAttribute(cardAttribute)) || Bot.HasInMonstersZone(cardId))
             {
                 return false;
             }
@@ -743,6 +743,12 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
             // Get materials that the bot is allowed to use for the Charmer.
             var usableMaterials = Bot.GetMonsters().Where(mst => mst.LinkCount <= 1 && !AvoidGenericMaterials.Any(id => mst.GetOriginCode() == id));
+
+            // We only ever want to use it to get to Borrelsword Dragon.
+            if (usableMaterials.Count() < 3)
+            {
+                return false;
+            }
 
             // Get the monster to be used for the same attribute
             var sameAttribute = GetWorstMonster(usableMaterials.Where(mst => mst.HasAttribute(cardAttribute)));
@@ -764,12 +770,16 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
             material_list.Add(otherMaterial);
 
-            if (Bot.HasInMonstersZone(cardId)) return false;
             AI.SelectMaterials(material_list);
             if (Bot.MonsterZone[0] == null && Bot.MonsterZone[2] == null && Bot.MonsterZone[5] == null)
+            {
                 AI.SelectPlace(Zones.z5);
+            }
             else
+            {
                 AI.SelectPlace(Zones.z6);
+            }
+
             return true;
         };
     }
