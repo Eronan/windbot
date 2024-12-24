@@ -2065,6 +2065,8 @@ namespace WindBot.Game
                 _duel.LastSummonedCards.Add(card);
             }
             _duel.SummoningCards.Clear();
+
+            _ai.OnSpSummoned();
         }
     }
 }
