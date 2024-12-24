@@ -82,6 +82,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
     private bool enemyActivateInfiniteImpermanenceFromHand = false;
 
+    // For checking if we attempted to cancel already
+    private bool attemptedRuneCancel = false;
+
     // For counting the number of materials used within a Rune Summon.
     private (int monsterCount, int spellCount, int bothCount) runeMaterialCount = (0, 0, 0);
 
@@ -150,7 +153,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.Activate, CardId.Shadow);
         AddExecutor(ExecutorType.Activate, CardId.Binding, CatenicorumBindingEffect);
         AddExecutor(ExecutorType.Activate, CardId.Portal, AvoidImpermanenceActivate(() => true));
-        AddExecutor(ExecutorType.Activate, CardId.Chains, AvoidImpermanenceActivate(() => true));
+        AddExecutor(ExecutorType.Activate, CardId.Chains, CatenicorumChainsActivate);
         AddExecutor(ExecutorType.Activate, CardId.Sanctum);
 
         // Other effects, to always activate
@@ -329,8 +332,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         //If Ethereal Beast is being summoned, and its conditions have been fulilled cancel the summon.
-        if (Card.IsOriginalCode(CardId.EtherealBeast) && RuneConditionFulfilled(2,2) && runeMaterialCatenicorumCount >= 2)
+        if (Card.IsOriginalCode(CardId.EtherealBeast) && RuneConditionFulfilled(2,2) && runeMaterialCatenicorumCount >= 2 && !attemptedRuneCancel)
         {
+            attemptedRuneCancel = true;
             return null;
         }
 
@@ -371,6 +375,8 @@ public sealed class CatenicorumExecutor : DefaultExecutor
                 {
                     runeMaterialCatenicorumCount++;
                 }
+
+                attemptedRuneCancel = false;
             }
 
             return selectedCards;
@@ -482,6 +488,33 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         }
 
         AI.SelectCard(negateTargets);
+        return true;
+    }
+
+    private bool CatenicorumChainsActivate()
+    {
+        // If it's the targeting effect, we want to choose the opponent's best monster.
+        if (Card.Location is CardLocation.Hand || (Card.Location is CardLocation.SpellZone && Card.IsFacedown()))
+        {
+            // Choose the most problematic monster.
+            var problematicCard = Util.GetProblematicEnemyCard(0, true);
+            if (problematicCard is not null)
+            {
+                AI.SelectCard(problematicCard);
+            }
+
+            // Avoid Infinite Impermanence.
+            if (Card.Location is CardLocation.Hand)
+            {
+                SelectSTPlace(Card, true);
+            }
+
+            // Even if we don't have a problematic card, we want to activate it if we can.
+            return true;
+        }
+
+        // If it's been used as material, always activate it whenever available in a zone not imperm'd.
+        SelectSTPlace(Card, true);
         return true;
     }
 
