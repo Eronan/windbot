@@ -992,12 +992,20 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         ];
         AI.SelectCard(costCardsOrder);
 
-        // To add to hand
+        // Cards to add to hand.
         List<int> cardsId = [];
+
+        // If a Rune monster is not in the hand, we want to search out all of the following to get to them.
+        if (!Bot.HasInHand(CatenicorumRunes))
+        {
+            cardsId = [CardId.RunedRecovery, CardId.Manipulator, CardId.Serpent, CardId.EtherealBeast];
+        }
+
         AddToProsperityList(CardId.Summoner, cardId => !Bot.HasInHandOrHasInMonstersZone(cardId));
         AddToProsperityList(CardId.Shadow, cardId => !Bot.HasInHandOrHasInMonstersZone(cardId));
         AddToProsperityList(CardId.Portal, cardId => !Bot.HasInHandOrInSpellZone(cardId));
         AddToProsperityList(CardId.Sanctum, cardId => !Bot.HasInSpellZone(cardId));
+        AddToProsperityList(CardId.RunedRecovery, cardId => !Bot.HasInHand(cardId));
         AddToProsperityList(CardId.Manipulator);
         AddToProsperityList(CardId.Serpent);
         AddToProsperityList(CardId.EtherealBeast);
