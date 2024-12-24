@@ -167,9 +167,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         // Priority Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CrystalWingSynchroDragon); // We always want to summon Crystal Wing whenever it's possible.
-        AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, CatenicorumManipulatorRuneSummon);
-        AddExecutor(ExecutorType.SpSummon, CardId.Serpent, CatenicorumSerpentRuneSummon);
-        AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast, CatenicorumEtherealBeastRuneSummon);
+        AddExecutor(ExecutorType.SpSummon, CardId.Manipulator, () => CatenicorumManipulatorRuneSummon());
+        AddExecutor(ExecutorType.SpSummon, CardId.Serpent, () => CatenicorumSerpentRuneSummon());
+        AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast, () => CatenicorumEtherealBeastRuneSummon());
 
         // Generic Special Summons
         AddExecutor(ExecutorType.SpSummon, CardId.CyberseQuantumDragon, CrystalWingRampSummon);
@@ -544,12 +544,25 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         var opponentsTurn = Duel.Player == 1;
 
         // To improve after creating summon proc functions.
-        var shouldSummonCard = Bot.Hand.Any(card => CatenicorumRunes.Contains(card.GetOriginCode()) && !Bot.HasInMonstersZone(card.GetOriginCode()));
-        return shouldSummonCard && (opponentsTurn || onlyCardOnField);
+        var shouldSummonCard = Bot.Hand.FirstOrDefault(card => ShouldRuneSummon(card));
+
+        return shouldSummonCard is not null && (opponentsTurn || onlyCardOnField);
+
+        bool ShouldRuneSummon(ClientCard card)
+        {
+            return card.GetOriginCode() switch
+            {
+                CardId.Manipulator => CatenicorumManipulatorRuneSummon(card),
+                CardId.Serpent => CatenicorumManipulatorRuneSummon(card),
+                CardId.EtherealBeast => false,
+                _ => false
+            };
+        }
     }
 
-    private bool CatenicorumEtherealBeastRuneSummon()
+    private bool CatenicorumEtherealBeastRuneSummon(ClientCard card = null)
     {
+        card ??= Card;
         // If it is already in the monster zone, Manipulator and Serpent must also already on the field.
         var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.EtherealBeast, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
         if (!hasNoSerpentOrAllRunesExist)
@@ -557,7 +570,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is not CardLocation.Deck)
+        if (card.Location is not CardLocation.Deck)
         {
             return true;
         }
@@ -602,8 +615,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return true;
     }
 
-    private bool CatenicorumManipulatorRuneSummon()
+    private bool CatenicorumManipulatorRuneSummon(ClientCard card = null)
     {
+        card ??= Card;
         // If it is already in the monster zone, Ethereal Beast and Serpent must also already on the field.
         var hasNoManipulatorOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Manipulator, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
         if (!hasNoManipulatorOrAllRunesExist)
@@ -611,7 +625,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is not CardLocation.Deck)
+        if (card.Location is not CardLocation.Deck)
         {
             return true;
         }
@@ -657,8 +671,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         return true;
     }
 
-    private bool CatenicorumSerpentRuneSummon()
+    private bool CatenicorumSerpentRuneSummon(ClientCard card = null)
     {
+        card ??= Card;
         // If it is already in the monster zone, Ethereal Beast and Manipulator must also already on the field.
         var hasNoSerpentOrAllRunesExist = !Bot.HasInMonstersZone(CardId.Serpent, true, false, true) || CatenicorumRunes.All(cardId => Bot.HasInMonstersZone(cardId, true, false, true));
         if (!hasNoSerpentOrAllRunesExist)
@@ -666,7 +681,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
-        if (Card.Location is not CardLocation.Deck)
+        if (card.Location is not CardLocation.Deck)
         {
             return true;
         }
