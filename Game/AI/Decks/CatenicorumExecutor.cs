@@ -909,6 +909,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             return false;
         }
 
+        portalRuneFromDeckIsUsed = true;
         AI.SelectCard(priorityList);
         return true;
 
