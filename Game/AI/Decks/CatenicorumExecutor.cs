@@ -942,28 +942,31 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         ClientCard PreferredMaterialOrder(IEnumerable<ClientCard> clientCards)
         {
             // Prioritise Shadow and then Summoner as materials
-            var sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
+            var nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Shadow));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Summoner));
 
             // Prioritise Serpent next
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Serpent));
 
             // Manipulator after Serpent
-            sanctumMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
+            nextMaterial ??= clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Manipulator));
+
+            // Sanctum is preferred if no preferred monsters are available
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Sanctum));
 
             // Portal is preferred if no preferred monsters are available
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Portal));
 
             // Binding is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Binding));
 
             // Circle is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Circle));
 
             // Chains is preferred next
-            sanctumMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
+            nextMaterial = clientCards.FirstOrDefault(card => card.IsOriginalCode(CardId.Chains));
 
-            return sanctumMaterial;
+            return nextMaterial;
         }
     }
 
