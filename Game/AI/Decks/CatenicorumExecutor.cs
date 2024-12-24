@@ -173,9 +173,9 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         AddExecutor(ExecutorType.SpSummon, CardId.EtherealBeast, () => CatenicorumEtherealBeastRuneSummon());
 
         // Generic Special Summons
+        AddExecutor(ExecutorType.SpSummon, CardId.GaiaBlazeForceOfTheSun, CrystalWingRampOnly);
         AddExecutor(ExecutorType.SpSummon, CardId.CyberseQuantumDragon, CrystalWingRampSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.ClearWingSynchroDragon, CrystalWingRampSummon);
-        AddExecutor(ExecutorType.SpSummon, CardId.GaiaBlazeForceOfTheSun, CrystalWingRampSummon);
         AddExecutor(ExecutorType.SpSummon, CardId.UtopiaBeyond);
         AddExecutor(ExecutorType.SpSummon, CardId.HopeHarbingerDragonTitanicGalaxy);
         AddExecutor(ExecutorType.SpSummon, CardId.BorrelswordDragon, GenericLinkSummon);
@@ -569,7 +569,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
                 var preferredMat = GetPreferredDeckMaterials();
                 AI.SelectNextCard(preferredMat);
             }
-            return opponentsTurn || onlyCardOnField || Duel.LastChainPlayer == 1;
+            return opponentsTurn || onlyCardOnField || InstantlyRedirectEffect();
         }
 
         return false;
@@ -783,6 +783,24 @@ public sealed class CatenicorumExecutor : DefaultExecutor
         };
     }
 
+    private bool CrystalWingRampOnly()
+    {
+        var tunerMaterials = Bot.MonsterZone.Where(card => card != null && card.Level == 1 && card.IsTuner()).ToList();
+        var otherLevel6Material = Bot.MonsterZone.Where(card => card != null && card.Level == 6 && !card.IsOriginalCode(CardId.Manipulator));
+        var manipulatorMaterial = Bot.MonsterZone.Where(card => card != null && card.IsOriginalCode(CardId.Manipulator));
+
+        // If we have Crystal Wing Synchro Dragon in the Extra Deck and 2 Level 1 Tuners, we don't mind using the only Manipulator on the field.
+        var crystalWingAvailable = Bot.ExtraDeck.Any(card => card.GetOriginCode() == CardId.CrystalWingSynchroDragon);
+        if (!crystalWingAvailable || tunerMaterials.Count < 2 || !manipulatorMaterial.Any())
+        {
+            return false;
+        }
+
+
+        AI.SelectMaterials([.. tunerMaterials, .. otherLevel6Material, .. manipulatorMaterial]);
+        return true;
+    }
+
     private bool CrystalWingRampSummon()
     {
         var tunerMaterials = Bot.MonsterZone.Where(card => card != null && card.Level == 1 && card.IsTuner()).ToList();
@@ -851,6 +869,11 @@ public sealed class CatenicorumExecutor : DefaultExecutor
     private bool InstantlyNegateEffect()
     {
         return Duel.LastChainPlayer != 0;
+    }
+
+    private bool InstantlyRedirectEffect()
+    {
+        return Duel.LastChainPlayer != 0 && Duel.LastChainTargets.Any(card => card.Controller == 1);
     }
 
     /// <summary>
