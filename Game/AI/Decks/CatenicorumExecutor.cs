@@ -559,6 +559,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
+            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
@@ -612,6 +613,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
+            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
@@ -666,6 +668,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
 
         if (Card.Location is not CardLocation.Deck)
         {
+            portalRuneFromDeckIsUsed = true;
             return true;
         }
 
@@ -1074,7 +1077,7 @@ public sealed class CatenicorumExecutor : DefaultExecutor
             case CardId.Serpent:
                 return Bot.HasInGraveyard([CardId.Shadow, CardId.Summoner]);
             case CardId.EtherealBeast:
-                return Bot.HasInHand(CatenicorumRunes);
+                return Bot.HasInHand(CardId.EtherealBeast) || (Bot.HasInHandOrInSpellZone(CardId.Portal) && !portalRuneFromDeckIsUsed);
             case CardId.Portal:
                 return !Bot.HasInHandOrInSpellZone(CardId.Portal);
             case CardId.Sanctum:
